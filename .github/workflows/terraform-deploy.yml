@@ -39,7 +39,7 @@ jobs:
     outputs:
       projects: ${{ steps.diff.outputs.projects }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -77,15 +77,15 @@ jobs:
       run:
         working-directory: projects/${{ matrix.project }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ vars.AWS_PLAN_ROLE_ARN }}
           role-session-name: gha-plan-${{ github.run_id }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: ${{ env.TF_VERSION }}
           terraform_wrapper: false
@@ -109,7 +109,7 @@ jobs:
           [ "$code" -eq 1 ] && exit 1 || exit 0
 
       - name: Comentar el plan en el PR
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         env:
           PROJECT: ${{ matrix.project }}
           EXITCODE: ${{ steps.plan.outputs.exitcode }}
@@ -150,15 +150,15 @@ jobs:
       run:
         working-directory: projects/${{ inputs.project }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ vars.AWS_APPLY_ROLE_ARN }}
           role-session-name: gha-apply-${{ github.run_id }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: ${{ env.TF_VERSION }}
           terraform_wrapper: false
