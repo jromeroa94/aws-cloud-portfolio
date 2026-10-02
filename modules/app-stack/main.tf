@@ -365,7 +365,7 @@ resource "aws_wafv2_web_acl" "app" {
   count = var.enable_waf ? 1 : 0
 
   name        = "${var.name}-waf"
-  description = "Reglas gestionadas de AWS + limitación de peticiones por IP"
+  description = "Reglas gestionadas de AWS + limitacion de peticiones por IP"
   scope       = "REGIONAL"
 
   default_action {
