@@ -1,0 +1,10 @@
+{
+  "order_id": "ORD-1001",
+  "customer_id": "CUS-42",
+  "currency": "CLP",
+  "requires_shipping": true,
+  "items": [
+    { "sku": "SKU-A", "quantity": 2, "unit_price": 12990 },
+    { "sku": "SKU-B", "quantity": 1, "unit_price": 4990 }
+  ]
+}

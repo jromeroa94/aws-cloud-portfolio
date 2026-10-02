@@ -1,0 +1,8 @@
+{
+  "order_id": "ORD-1002",
+  "customer_id": "CUS-42",
+  "currency": "EUR",
+  "items": [
+    { "sku": "SKU-A", "quantity": 0, "unit_price": 12990 }
+  ]
+}

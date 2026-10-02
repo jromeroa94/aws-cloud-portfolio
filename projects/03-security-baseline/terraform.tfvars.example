@@ -1,0 +1,7 @@
+region      = "sa-east-1"
+environment = "prod"
+
+security_alert_emails = ["seguridad@ejemplo.cl"]
+
+# true en una cuenta real: los logs de auditoría quedan inmutables 365 días.
+enable_object_lock = false

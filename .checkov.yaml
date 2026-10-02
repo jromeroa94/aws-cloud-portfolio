@@ -1,0 +1,34 @@
+# Checks desactivados en todo el repositorio, con su justificación.
+# Los descartes puntuales están junto al recurso (#checkov:skip=...) para que la
+# razón se revise en el mismo PR que el código.
+compact: true
+quiet: true
+soft-fail: false
+skip-check:
+  # Retención de 1 año en CloudWatch Logs: el histórico de auditoría vive en S3
+  # (proyecto 03, 7 años con Glacier IR); en CloudWatch se paga por GB almacenado.
+  - CKV_AWS_338
+  # Access logging de S3: los accesos se auditan con CloudTrail; activarlo en el
+  # bucket de auditoría crearía un bucle de logs sobre logs.
+  - CKV_AWS_18
+  # Replicación entre regiones de S3: no aporta en buckets de informes y backups
+  # transitorios; los datos críticos se replican en la capa de base de datos.
+  - CKV_AWS_144
+  # Notificaciones de eventos en todos los buckets: solo tienen sentido donde hay
+  # un consumidor (bucket de entrada del proyecto 02).
+  - CKV2_AWS_62
+  # Firma de código en Lambda: requiere AWS Signer en la cadena de CI; fuera del
+  # alcance de este portfolio y documentado como siguiente paso.
+  - CKV_AWS_272
+  # Lambdas en VPC: no acceden a recursos privados; meterlas en VPC añadiría
+  # NAT/endpoints y latencia de arranque sin beneficio de seguridad.
+  - CKV_AWS_117
+  # Cifrado CMK de variables de entorno de Lambda: solo contienen nombres de
+  # recursos, nunca secretos (los secretos van a Secrets Manager).
+  - CKV_AWS_173
+  # Fijar zone IDs en aws_availability_zones: el módulo selecciona AZs disponibles
+  # por región y documenta su uso en outputs.
+  - CKV_AWS_394
+  # workflow_dispatch con input: es un "choice" cerrado a la lista de proyectos y el
+  # job de apply exige el environment protegido con aprobación manual.
+  - CKV_GHA_7

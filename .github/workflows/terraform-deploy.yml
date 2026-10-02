@@ -1,0 +1,176 @@
+name: Terraform plan / apply
+
+# Plan automático en cada PR que toca un proyecto (rol de solo lectura vía OIDC).
+# Apply manual, solo desde main y con aprobación del environment "production".
+# Si el repositorio aún no tiene configurados los roles (ver bootstrap/), los jobs
+# se omiten en lugar de fallar.
+
+on:
+  pull_request:
+    paths:
+      - "projects/**"
+      - "modules/**"
+  workflow_dispatch:
+    inputs:
+      project:
+        description: "Proyecto a desplegar"
+        required: true
+        type: choice
+        options:
+          - 01-multi-region-ha-dr
+          - 02-serverless-order-pipeline
+          - 03-security-baseline
+          - 04-finops-automation
+          - 05-observability
+
+permissions:
+  contents: read
+
+env:
+  TF_VERSION: "1.16.5"
+  TF_IN_AUTOMATION: "true"
+  AWS_REGION: sa-east-1
+
+jobs:
+  changes:
+    name: Detectar proyectos modificados
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    outputs:
+      projects: ${{ steps.diff.outputs.projects }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - id: diff
+        name: Proyectos afectados
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          changed=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
+          # Un cambio en modules/ afecta a todos los proyectos que lo consumen.
+          if echo "$changed" | grep -q '^modules/'; then
+            projects=$(ls projects)
+          else
+            projects=$(echo "$changed" | grep '^projects/' | cut -d/ -f2 | sort -u)
+          fi
+          json=$(printf '%s\n' $projects | jq -R . | jq -cs 'map(select(length > 0))')
+          echo "projects=$json" >> "$GITHUB_OUTPUT"
+          echo "Proyectos: $json"
+
+  plan:
+    name: Plan · ${{ matrix.project }}
+    needs: changes
+    if: needs.changes.outputs.projects != '[]' && vars.AWS_PLAN_ROLE_ARN != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # necesario para OIDC
+      pull-requests: write # comentario con el plan
+    strategy:
+      fail-fast: false
+      matrix:
+        project: ${{ fromJson(needs.changes.outputs.projects) }}
+    defaults:
+      run:
+        working-directory: projects/${{ matrix.project }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_PLAN_ROLE_ARN }}
+          role-session-name: gha-plan-${{ github.run_id }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Init
+        run: |
+          terraform init -input=false \
+            -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" \
+            -backend-config="region=${{ env.AWS_REGION }}"
+
+      - name: Plan
+        id: plan
+        run: |
+          set +e
+          terraform plan -input=false -lock-timeout=5m -no-color -detailed-exitcode \
+            -var-file=terraform.tfvars.example -out=tfplan > plan.txt 2>&1
+          code=$?
+          set -e
+          cat plan.txt
+          echo "exitcode=$code" >> "$GITHUB_OUTPUT"
+          [ "$code" -eq 1 ] && exit 1 || exit 0
+
+      - name: Comentar el plan en el PR
+        uses: actions/github-script@v7
+        env:
+          PROJECT: ${{ matrix.project }}
+          EXITCODE: ${{ steps.plan.outputs.exitcode }}
+        with:
+          script: |
+            const fs = require('fs');
+            const plan = fs.readFileSync(`projects/${process.env.PROJECT}/plan.txt`, 'utf8');
+            const summary = plan.split('\n').find(l => l.startsWith('Plan:')) || 'Sin cambios.';
+            const body = [
+              `### Terraform plan · \`${process.env.PROJECT}\``,
+              `**${summary}**`,
+              '<details><summary>Ver plan completo</summary>',
+              '',
+              '```hcl',
+              plan.length > 60000 ? plan.slice(-60000) : plan,
+              '```',
+              '</details>',
+            ].join('\n');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });
+
+  apply:
+    name: Apply · ${{ inputs.project }}
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production # revisores obligatorios; la trust policy del rol exige este environment
+    permissions:
+      contents: read
+      id-token: write
+    concurrency:
+      group: apply-${{ inputs.project }}
+      cancel-in-progress: false
+    defaults:
+      run:
+        working-directory: projects/${{ inputs.project }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_APPLY_ROLE_ARN }}
+          role-session-name: gha-apply-${{ github.run_id }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Init
+        run: |
+          terraform init -input=false \
+            -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" \
+            -backend-config="region=${{ env.AWS_REGION }}"
+
+      - name: Plan
+        run: terraform plan -input=false -lock-timeout=5m -var-file=terraform.tfvars.example -out=tfplan
+
+      - name: Apply del plan revisado
+        run: terraform apply -input=false -lock-timeout=5m tfplan

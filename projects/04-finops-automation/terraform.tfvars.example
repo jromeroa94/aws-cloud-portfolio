@@ -1,0 +1,10 @@
+region              = "sa-east-1"
+environment         = "prod"
+monthly_budget_usd  = 500
+notification_emails = ["finops@ejemplo.cl"]
+
+scan_regions  = ["sa-east-1", "us-east-1"]
+required_tags = ["CostCenter", "Environment", "Project"]
+
+# Etiquetar candidatos para revisión (nunca se borra nada automáticamente):
+tag_candidates = false

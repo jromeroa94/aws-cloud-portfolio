@@ -1,0 +1,3 @@
+boto3>=1.35
+moto[ec2,s3,sns]>=5.0
+pytest>=8.0

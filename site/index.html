@@ -1,0 +1,552 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Johan Romero, ingeniero cloud AWS</title>
+<meta name="description" content="Portfolio de Johan Romero Aguirre: infraestructura AWS en Terraform con alta disponibilidad multi-región, Lambda en Python, seguridad, FinOps y observabilidad por SLOs.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='10' cy='22' r='6' fill='%232F8F83'/%3E%3Ccircle cx='22' cy='10' r='6' fill='none' stroke='%232F8F83' stroke-width='3'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:ital,wght@0,400;0,500;0,700;0,800;1,400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #F1F4F3;
+    --surface: #E4EAE8;
+    --ink: #17262B;
+    --muted: #536466;
+    --line: #C7D2CF;
+    --patina: #2F8F83;
+    --patina-ink: #1F6A61;
+    --standby: #B07A1E;
+    --down: #9AA5A4;
+    --focus: #1F6A61;
+    --measure: 68ch;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0F1A1D;
+      --surface: #16252A;
+      --ink: #E3ECEA;
+      --muted: #9DB0AE;
+      --line: #2A3D42;
+      --patina: #4FB8A9;
+      --patina-ink: #7DD3C6;
+      --standby: #E0AE52;
+      --down: #4A5A5D;
+      --focus: #7DD3C6;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0F1A1D;
+    --surface: #16252A;
+    --ink: #E3ECEA;
+    --muted: #9DB0AE;
+    --line: #2A3D42;
+    --patina: #4FB8A9;
+    --patina-ink: #7DD3C6;
+    --standby: #E0AE52;
+    --down: #4A5A5D;
+    --focus: #7DD3C6;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Schibsted Grotesk", system-ui, sans-serif;
+    font-size: 1.0625rem;
+    line-height: 1.6;
+  }
+  a { color: var(--patina-ink); text-underline-offset: 0.2em; text-decoration-thickness: 1px; }
+  a:hover { text-decoration-thickness: 2px; }
+  :focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; border-radius: 2px; }
+
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 16px; }
+  @media (min-width: 720px) { .wrap { padding: 0 32px; } }
+
+  /* ---------- Cabecera ---------- */
+  .top {
+    display: flex; justify-content: space-between; align-items: baseline; gap: 8px 16px;
+    flex-wrap: wrap; padding-top: 24px; font-size: 0.9375rem;
+  }
+  .top nav { display: flex; gap: 6px 20px; flex-wrap: wrap; }
+  .top nav a { color: var(--ink); text-decoration: none; }
+  .top nav a:hover { color: var(--patina-ink); }
+  .brand { font-weight: 700; }
+
+  /* ---------- Hero ---------- */
+  .hero {
+    display: grid; gap: 40px; align-items: center;
+    padding: 56px 0 72px;
+    border-bottom: 1px solid var(--line);
+  }
+  @media (min-width: 920px) { .hero { grid-template-columns: 1fr 1.05fr; padding: 88px 0 96px; } }
+
+  h1 {
+    font-size: clamp(2.5rem, 6.2vw, 4.75rem);
+    line-height: 0.98;
+    letter-spacing: -0.035em;
+    font-weight: 800;
+    margin: 0 0 24px;
+    max-width: 12ch;
+  }
+  .lede { font-size: 1.1875rem; color: var(--muted); max-width: 44ch; margin: 0 0 28px; }
+  .lede strong { color: var(--ink); font-weight: 500; }
+  .actions { display: flex; gap: 12px; flex-wrap: wrap; }
+  .btn {
+    display: inline-block; padding: 12px 20px; border-radius: 999px;
+    font: inherit; font-weight: 700; font-size: 1rem; text-decoration: none; cursor: pointer;
+    border: 2px solid var(--ink); background: var(--ink); color: var(--bg);
+  }
+  .btn.ghost { background: transparent; color: var(--ink); }
+  .btn:hover { background: var(--patina-ink); border-color: var(--patina-ink); color: var(--bg); }
+
+  /* ---------- Simulador de failover ---------- */
+  .sim {
+    margin: 0;
+    background: var(--surface);
+    border-radius: 20px;
+    padding: 20px;
+  }
+  @media (min-width: 720px) { .sim { padding: 28px; } }
+  .sim-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
+  .sim-head p { margin: 0; font-weight: 700; }
+  .sim svg { width: 100%; height: auto; display: block; }
+  .sim .region-box { fill: var(--bg); stroke: var(--line); stroke-width: 1.5; transition: stroke 400ms; }
+  .sim .region-name { font: 700 19px "Schibsted Grotesk", sans-serif; fill: var(--ink); }
+  .sim .region-meta { font: 400 15px "Schibsted Grotesk", sans-serif; fill: var(--muted); }
+  .sim .state { font: 700 15px "Schibsted Grotesk", sans-serif; }
+  .sim .node { transition: fill 400ms, stroke 400ms; }
+  .sim .link { fill: none; stroke-width: 3; stroke-linecap: round; transition: stroke 400ms, opacity 400ms; }
+  .sim .repl { fill: none; stroke: var(--patina); stroke-width: 2; stroke-dasharray: 2 7; stroke-linecap: round; }
+  .sim .users { fill: var(--ink); }
+  .sim .users-label { font: 700 16px "Schibsted Grotesk", sans-serif; fill: var(--ink); }
+  @media (prefers-reduced-motion: no-preference) {
+    .sim .repl { animation: flow 1.2s linear infinite; }
+    @keyframes flow { to { stroke-dashoffset: -18; } }
+  }
+
+  .readout { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 16px 0 12px; }
+  .readout div { border-top: 2px solid var(--line); padding-top: 8px; }
+  .readout dt { font-size: 0.8125rem; color: var(--muted); }
+  .readout dd { margin: 0; font-size: 1.25rem; font-weight: 800; letter-spacing: -0.02em; white-space: nowrap; font-feature-settings: "tnum" 1; }
+
+  .steps { list-style: none; margin: 0; padding: 0; font-size: 0.9375rem; }
+  .steps li { display: grid; grid-template-columns: 4.5em 1fr; gap: 8px; color: var(--muted); padding: 2px 0; }
+  .steps li.done { color: var(--ink); }
+  .steps time { font-weight: 700; }
+  .nowrap { white-space: nowrap; }
+  .steps li.pending { opacity: 0.55; }
+  .sim-note { font-size: 0.8125rem; color: var(--muted); margin: 12px 0 0; }
+
+  /* ---------- Secciones ---------- */
+  section { padding: 72px 0; border-bottom: 1px solid var(--line); }
+  h2 {
+    font-size: clamp(1.75rem, 3.4vw, 2.5rem);
+    letter-spacing: -0.025em; line-height: 1.1; font-weight: 800;
+    margin: 0 0 12px;
+  }
+  .section-intro { color: var(--muted); max-width: var(--measure); margin: 0 0 40px; }
+
+  /* Proyectos: lista, no tarjetas */
+  .projects { list-style: none; margin: 0; padding: 0; }
+  .project {
+    display: grid; gap: 8px 40px;
+    padding: 28px 0; border-top: 1px solid var(--line);
+  }
+  @media (min-width: 860px) { .project { grid-template-columns: 15rem 1fr 12rem; align-items: start; } }
+  .project h3 { margin: 0; font-size: 1.3125rem; line-height: 1.25; letter-spacing: -0.01em; }
+  .project .path { display: block; font-size: 0.875rem; color: var(--muted); font-weight: 400; margin-top: 4px; }
+  .project p { margin: 0 0 10px; max-width: 60ch; }
+  .project .proof { color: var(--muted); font-size: 0.9375rem; margin: 0; }
+  .stack { display: flex; flex-wrap: wrap; gap: 6px; list-style: none; margin: 0; padding: 0; }
+  code { font-size: 0.9em; }
+  .stack li { font-size: 0.8125rem; padding: 2px 10px; border-radius: 999px; background: var(--surface); }
+  .project .code { font-weight: 700; }
+  .project .stack + p { margin-top: 14px; }
+
+  /* Decisiones */
+  .decisions { display: grid; gap: 32px; }
+  @media (min-width: 860px) { .decisions { grid-template-columns: repeat(2, 1fr); gap: 40px 56px; } }
+  .decisions h3 { margin: 0 0 6px; font-size: 1.125rem; }
+  .decisions p { margin: 0; color: var(--muted); max-width: 52ch; }
+
+  /* Requisitos */
+  .reqs { width: 100%; border-collapse: collapse; font-size: 0.9375rem; }
+  .reqs th, .reqs td { text-align: left; padding: 12px 16px 12px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  .reqs th { font-weight: 700; color: var(--muted); font-size: 0.875rem; }
+  .reqs td:first-child { font-weight: 500; width: 40%; }
+  .table-scroll { overflow-x: auto; }
+
+  /* Experiencia */
+  .two { display: grid; gap: 40px; }
+  @media (min-width: 860px) { .two { grid-template-columns: 1fr 1fr; gap: 56px; } }
+  .plain { list-style: none; margin: 0; padding: 0; }
+  .plain li { padding: 10px 0; border-top: 1px solid var(--line); }
+  .plain li span { color: var(--muted); }
+
+  footer { padding: 56px 0 72px; }
+  footer p { max-width: var(--measure); }
+  .contact { display: flex; gap: 24px; flex-wrap: wrap; font-weight: 700; font-size: 1.125rem; }
+
+  .theme-toggle {
+    font: inherit; font-size: 0.9375rem; background: none; border: 0; color: var(--ink);
+    cursor: pointer; padding: 0; text-decoration: underline; text-underline-offset: 0.2em;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <span class="brand">Johan Romero Aguirre</span>
+    <nav aria-label="Secciones">
+      <a href="#proyectos">Proyectos</a>
+      <a href="#decisiones">Decisiones</a>
+      <a href="#experiencia">Experiencia</a>
+      <a href="#contacto">Contacto</a>
+      <button class="theme-toggle" type="button" id="theme-toggle">Tema oscuro</button>
+    </nav>
+  </header>
+
+  <main>
+    <div class="hero">
+      <div>
+        <h1>Infraestructura AWS que sigue en pie cuando cae una región.</h1>
+        <p class="lede">Soy ingeniero DevOps y Cloud con <strong>unos diez años</strong> en banca, seguros y energía. Diseño plataformas en Terraform con alta disponibilidad, seguridad desde el diseño y costes bajo control, y documento por qué tomo cada decisión.</p>
+        <div class="actions">
+          <a class="btn repo-link" href="#" data-path="">Ver el código en GitHub</a>
+          <a class="btn ghost" href="#proyectos">Recorrer los proyectos</a>
+        </div>
+      </div>
+
+      <figure class="sim" aria-labelledby="sim-title">
+        <div class="sim-head">
+          <p id="sim-title">Prueba el failover</p>
+          <button class="btn" type="button" id="sim-btn">Simular caída de sa-east-1</button>
+        </div>
+
+        <svg viewBox="0 0 470 300" role="img" aria-labelledby="sim-svg-title sim-svg-desc">
+          <title id="sim-svg-title">Topología de dos regiones</title>
+          <desc id="sim-svg-desc">Los usuarios en Chile llegan a la región activa a través de Route 53. Aurora replica los datos de forma continua desde la región activa a la región en espera.</desc>
+
+          <!-- Usuarios -->
+          <circle class="users" cx="22" cy="140" r="8"/>
+          <circle class="users" cx="10" cy="158" r="5" opacity=".55"/>
+          <circle class="users" cx="34" cy="160" r="5" opacity=".55"/>
+          <text class="users-label" x="0" y="192">Usuarios</text>
+          <text class="region-meta" x="0" y="210">Chile</text>
+
+          <!-- Route 53 -->
+          <rect x="70" y="124" width="104" height="44" rx="22" class="region-box"/>
+          <text class="region-name" x="122" y="152" text-anchor="middle" style="font-size:16px">Route 53</text>
+          <line x1="32" y1="146" x2="70" y2="146" class="link" stroke="var(--ink)"/>
+
+          <!-- Enlaces DNS -->
+          <path id="link-primary" class="link" d="M174 146 C 210 146, 210 228, 246 228" stroke="var(--patina)"/>
+          <path id="link-dr" class="link" d="M174 146 C 210 146, 210 66, 246 66" stroke="var(--line)" stroke-dasharray="6 6"/>
+
+          <!-- us-east-1 (DR) -->
+          <rect x="246" y="12" width="222" height="108" rx="14" class="region-box" id="box-dr"/>
+          <text class="region-name" x="264" y="44">us-east-1</text>
+          <text class="region-meta" x="264" y="68">Virginia</text>
+          <circle class="node" id="dot-dr" cx="446" cy="38" r="8" fill="var(--standby)"/>
+          <text class="state" id="state-dr" x="264" y="102" fill="var(--standby)">En espera, 1 instancia</text>
+
+          <!-- sa-east-1 (primaria) -->
+          <rect x="246" y="174" width="222" height="108" rx="14" class="region-box" id="box-primary"/>
+          <text class="region-name" x="264" y="206">sa-east-1</text>
+          <text class="region-meta" x="264" y="230">São Paulo</text>
+          <circle class="node" id="dot-primary" cx="446" cy="200" r="8" fill="var(--patina)"/>
+          <text class="state" id="state-primary" x="264" y="264" fill="var(--patina-ink)">Activa, 2–6 instancias</text>
+
+          <!-- Replicación Aurora Global -->
+          <path id="repl" class="repl" d="M380 174 L 380 120"/>
+          <text class="region-meta" id="repl-label" x="390" y="152" style="font-size:13px">Aurora</text>
+        </svg>
+
+        <dl class="readout">
+          <div><dt>Región activa</dt><dd id="ro-region">sa-east-1</dd></div>
+          <div><dt>Datos perdidos</dt><dd id="ro-rpo">—</dd></div>
+          <div><dt>Interrupción</dt><dd id="ro-rto">—</dd></div>
+        </dl>
+        <ol class="steps" id="steps" aria-live="polite"></ol>
+        <p class="sim-note">Simulación ilustrativa de los pasos del <a class="repo-link" href="#" data-path="/blob/main/projects/01-multi-region-ha-dr/runbooks/failover.md">runbook de failover</a>. Los tiempos son objetivos de diseño (RPO menor a 1 minuto, RTO menor a 15), no una medición.</p>
+      </figure>
+    </div>
+
+    <section id="proyectos" aria-labelledby="proyectos-h">
+      <h2 id="proyectos-h">Cinco proyectos, una plataforma</h2>
+      <p class="section-intro">Cada proyecto es Terraform que se puede desplegar, con su README de decisiones, tests que corren sin credenciales de AWS y un análisis de seguridad en cada pull request.</p>
+
+      <ul class="projects">
+        <li class="project">
+          <h3>Multi-región con alta disponibilidad<span class="path">projects/01-multi-region-ha-dr</span></h3>
+          <div>
+            <p>Aplicación en dos regiones con Aurora Global Database y conmutación por DNS. La región de espera funciona con capacidad mínima y escala durante el failover.</p>
+            <p class="proof">Incluye runbook de failover y failback, un game day para medir RPO y RTO reales, y una contraseña de base de datos que nunca se escribe en el estado de Terraform.</p>
+          </div>
+          <div>
+            <ul class="stack"><li>Aurora Global</li><li>Route 53</li><li>ALB</li><li>ASG</li><li>WAF</li><li>KMS</li></ul>
+            <p><a class="code repo-link" href="#" data-path="/tree/main/projects/01-multi-region-ha-dr">Abrir el proyecto</a></p>
+          </div>
+        </li>
+
+        <li class="project">
+          <h3>Pipeline serverless de pedidos<span class="path">projects/02-serverless-order-pipeline</span></h3>
+          <div>
+            <p>Una Lambda en Python valida pedidos que llegan a S3, los registra en DynamoDB y los reparte a envíos, inventario y analítica mediante SNS y colas SQS.</p>
+            <p class="proof">Idempotente ante duplicados, reintenta solo los mensajes con fallos transitorios y recupera eventos que no llegaron a publicarse. 22 tests con AWS simulado.</p>
+          </div>
+          <div>
+            <ul class="stack"><li>Lambda Python</li><li>EventBridge</li><li>SQS</li><li>SNS</li><li>DynamoDB</li></ul>
+            <p><a class="code repo-link" href="#" data-path="/tree/main/projects/02-serverless-order-pipeline">Abrir el proyecto</a></p>
+          </div>
+        </li>
+
+        <li class="project">
+          <h3>Baseline de seguridad y gobierno<span class="path">projects/03-security-baseline</span></h3>
+          <div>
+            <p>Lo que se aplica a una cuenta antes de desplegar nada: auditoría que no se puede alterar, detección de amenazas, reglas de cumplimiento y alertas sobre cambios sensibles.</p>
+            <p class="proof">17 reglas de AWS Config, 14 alertas del benchmark CIS, Security Hub, un permissions boundary para que los equipos creen sus roles sin escalar privilegios y SCPs de ejemplo.</p>
+          </div>
+          <div>
+            <ul class="stack"><li>CloudTrail</li><li>Config</li><li>GuardDuty</li><li>Security Hub</li><li>IAM</li></ul>
+            <p><a class="code repo-link" href="#" data-path="/tree/main/projects/03-security-baseline">Abrir el proyecto</a></p>
+          </div>
+        </li>
+
+        <li class="project">
+          <h3>FinOps automatizado<span class="path">projects/04-finops-automation</span></h3>
+          <div>
+            <p>Presupuestos con aviso por pronóstico, detección de anomalías de gasto y un informe semanal de volúmenes, IPs, snapshots e instancias que cuestan dinero sin aportar valor.</p>
+            <p class="proof">El escáner nunca borra nada: informa del ahorro estimado y marca los recursos para que su dueño decida. Su rol solo puede escribir una etiqueta concreta.</p>
+          </div>
+          <div>
+            <ul class="stack"><li>Budgets</li><li>Cost Anomaly Detection</li><li>Lambda Python</li><li>Scheduler</li></ul>
+            <p><a class="code repo-link" href="#" data-path="/tree/main/projects/04-finops-automation">Abrir el proyecto</a></p>
+          </div>
+        </li>
+
+        <li class="project">
+          <h3>Observabilidad basada en SLOs<span class="path">projects/05-observability</span></h3>
+          <div>
+            <p>Alertas que se disparan según lo rápido que se gasta el presupuesto de error, no por umbrales fijos. Dashboard por servicio, consultas de Logs Insights para incidentes y envío opcional de logs a OpenSearch.</p>
+            <p class="proof">Cada alerta que despierta a alguien enlaza a un runbook, y los umbrales se verifican con tests.</p>
+          </div>
+          <div>
+            <ul class="stack"><li>CloudWatch</li><li>OpenSearch</li><li>Data Firehose</li></ul>
+            <p><a class="code repo-link" href="#" data-path="/tree/main/projects/05-observability">Abrir el proyecto</a></p>
+          </div>
+        </li>
+      </ul>
+    </section>
+
+    <section id="decisiones" aria-labelledby="decisiones-h">
+      <h2 id="decisiones-h">Cómo tomo decisiones</h2>
+      <p class="section-intro">La parte difícil de la infraestructura no es escribirla, es elegir qué no hacer. Estas son algunas de las decisiones registradas en el repositorio.</p>
+      <div class="decisions">
+        <div>
+          <h3>Warm standby antes que activo-activo</h3>
+          <p>Con un RTO de 15 minutos, dos regiones aceptando escrituras duplican el coste y añaden conflictos que el negocio no necesita. <a class="repo-link" href="#" data-path="/blob/main/docs/adr/0002-warm-standby-dr.md">Ver ADR</a></p>
+        </div>
+        <div>
+          <h3>Migrar desde CloudFormation sin recrear nada</h3>
+          <p>Los stacks estables se quedan como están. Lo que se migra entra con bloques <code>import</code> revisados en un pull request. <a class="repo-link" href="#" data-path="/blob/main/docs/adr/0001-terraform-y-convivencia-con-cloudformation.md">Ver ADR</a></p>
+        </div>
+        <div>
+          <h3>Ninguna access key en la CI</h3>
+          <p>GitHub Actions obtiene credenciales temporales por OIDC: un rol de solo lectura para el plan y otro, tras aprobación manual, para el apply. <a class="repo-link" href="#" data-path="/blob/main/docs/adr/0003-github-oidc.md">Ver ADR</a></p>
+        </div>
+        <div>
+          <h3>Alertar sobre el impacto, no sobre el ruido</h3>
+          <p>Diez errores pueden ser nada o pueden ser todo, según el tráfico. Por eso las alertas miden el consumo del presupuesto de error. <a class="repo-link" href="#" data-path="/blob/main/docs/adr/0004-alertas-por-slo.md">Ver ADR</a></p>
+        </div>
+      </div>
+    </section>
+
+    <section aria-labelledby="req-h">
+      <h2 id="req-h">Qué buscar en el código</h2>
+      <p class="section-intro">Si estás evaluando un perfil de ingeniería cloud en AWS, aquí está dónde comprobar cada competencia.</p>
+      <div class="table-scroll">
+        <table class="reqs">
+          <thead><tr><th scope="col">Competencia</th><th scope="col">Dónde verla</th></tr></thead>
+          <tbody>
+            <tr><td>Alta disponibilidad y recuperación multi-región</td><td>Proyecto 01, runbooks y game day</td></tr>
+            <tr><td>Terraform modular, trazable y probado</td><td>Módulos <code>vpc</code> y <code>app-stack</code>, <code>terraform test</code>, plan comentado en cada PR</td></tr>
+            <tr><td>Redes: VPC, subredes, NAT, endpoints</td><td>Módulo <code>vpc</code>, con tres capas y una NAT por zona</td></tr>
+            <tr><td>Seguridad: IAM, KMS, cifrado y auditoría</td><td>Proyecto 03 y la política de mínimo privilegio de cada rol</td></tr>
+            <tr><td>Lambda en Python</td><td>Proyectos 02 y 04, con tests en <code>pytest</code> y <code>moto</code></td></tr>
+            <tr><td>Costes y eficiencia operativa</td><td>Proyecto 04 y etiquetas de coste en todos los recursos</td></tr>
+            <tr><td>Monitoreo y logs con CloudWatch y ELK</td><td>Proyecto 05</td></tr>
+            <tr><td>CI/CD</td><td>Workflows de GitHub Actions con Checkov, TFLint y OIDC</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="experiencia" aria-labelledby="experiencia-h">
+      <h2 id="experiencia-h">Experiencia</h2>
+      <p class="section-intro">Plataformas cloud y DevSecOps para banca, seguros y energía, desde consultoras internacionales y equipos de producto. Además dirijo <a href="https://nimbodev.com">nimbodev</a>, una consultora de cinco ingenieros senior.</p>
+      <div class="two">
+        <div>
+          <h3>Dónde he trabajado</h3>
+          <ul class="plain">
+            <li>NTT Data</li>
+            <li>Indra<span>, Centro de Excelencia DevSecOps</span></li>
+            <li>Smartjob</li>
+            <li>Slashmobility</li>
+            <li>Zoluxiones</li>
+            <li>Gloval Building</li>
+          </ul>
+        </div>
+        <div>
+          <h3>Certificaciones</h3>
+          <ul class="plain">
+            <li>AWS Certified Cloud Practitioner</li>
+            <li>Azure Solutions Architect Expert <span>(AZ-305)</span></li>
+            <li>Azure Network Engineer Associate <span>(AZ-700)</span></li>
+            <li>Azure Administrator Associate <span>(AZ-104)</span></li>
+            <li>Azure Virtual Desktop Specialty <span>(AZ-140)</span></li>
+            <li>Azure Fundamentals <span>(AZ-900)</span></li>
+            <li>LPIC-1</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer id="contacto">
+    <h2>Hablemos</h2>
+    <p class="section-intro">Vivo en Perú (UTC−5) y trabajo en remoto, con disponibilidad completa en horario de Chile.</p>
+    <div class="contact">
+      <a class="repo-link" href="#" data-path="" data-profile="true">GitHub</a>
+      <a href="https://nimbodev.com">nimbodev.com</a>
+    </div>
+  </footer>
+</div>
+
+<script>
+  // ---- Enlaces al repositorio: se deducen de la URL de GitHub Pages ----
+  (function () {
+    var host = location.hostname;              // usuario.github.io
+    var parts = location.pathname.split("/").filter(Boolean);
+    var user = host.endsWith(".github.io") ? host.replace(".github.io", "") : "jromeroa94";
+    var repo = host.endsWith(".github.io") && parts.length ? parts[0] : "aws-cloud-portfolio";
+    var base = "https://github.com/" + user + "/" + repo;
+    document.querySelectorAll(".repo-link").forEach(function (a) {
+      a.href = a.dataset.profile ? "https://github.com/" + user : base + (a.dataset.path || "");
+    });
+  })();
+
+  // ---- Tema claro / oscuro ----
+  (function () {
+    var btn = document.getElementById("theme-toggle");
+    var root = document.documentElement;
+    function isDark() {
+      var t = root.dataset.theme;
+      return t ? t === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+    }
+    function label() { btn.textContent = isDark() ? "Tema claro" : "Tema oscuro"; }
+    try { var saved = localStorage.getItem("theme"); if (saved) root.dataset.theme = saved; } catch (e) {}
+    label();
+    btn.addEventListener("click", function () {
+      root.dataset.theme = isDark() ? "light" : "dark";
+      try { localStorage.setItem("theme", root.dataset.theme); } catch (e) {}
+      label();
+    });
+  })();
+
+  // ---- Simulador de failover ----
+  (function () {
+    var btn = document.getElementById("sim-btn");
+    var steps = document.getElementById("steps");
+    var $ = function (id) { return document.getElementById(id); };
+    var reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    var state = "primary";
+    var timers = [];
+
+    var failover = [
+      { t: "00:00", text: "sa-east-1 deja de responder", act: function () { setRegion("primary", "down"); } },
+      { t: "00:30", text: "Route 53 marca el health check como fallido y envía el tráfico a us-east-1", act: function () { setLinks("dr"); } },
+      { t: "02:00", text: "El ASG de us-east-1 escala de 1 a 2 instancias", act: function () { $("state-dr").textContent = "Escalando a 2 instancias"; } },
+      { t: "04:00", text: "Aurora promueve el cluster de us-east-1 a writer", act: function () { setRepl(false); $("ro-rpo").textContent = "< 1 s"; } },
+      { t: "06:00", text: "us-east-1 acepta escrituras. Servicio recuperado", act: function () { setRegion("dr", "active"); $("ro-region").textContent = "us-east-1"; $("ro-rto").textContent = "6 min"; } },
+    ];
+
+    var failback = [
+      { t: "00:00", text: "sa-east-1 se recupera y vuelve como réplica de us-east-1", act: function () { setRegion("primary", "standby"); setRepl(true, "up"); } },
+      { t: "05:00", text: "Switchover planificado de Aurora, sin pérdida de datos", act: function () { setRegion("primary", "active"); setRegion("dr", "standby"); setRepl(true, "down"); } },
+      { t: "05:30", text: "Route 53 vuelve a enviar el tráfico a sa-east-1", act: function () { setLinks("primary"); $("ro-region").textContent = "sa-east-1"; $("ro-rpo").textContent = "0"; $("ro-rto").textContent = "0 min"; } },
+    ];
+
+    var styles = {
+      active:  { color: "var(--patina)",  text: "var(--patina-ink)" },
+      standby: { color: "var(--standby)", text: "var(--standby)" },
+      down:    { color: "var(--down)",    text: "var(--muted)" },
+    };
+    var labels = {
+      primary: { active: "Activa, 2–6 instancias", standby: "En espera, réplica de lectura", down: "Sin servicio" },
+      dr:      { active: "Activa, 2–6 instancias", standby: "En espera, 1 instancia", down: "Sin servicio" },
+    };
+
+    function setRegion(which, mode) {
+      var s = styles[mode];
+      $("dot-" + which).setAttribute("fill", s.color);
+      $("state-" + which).setAttribute("fill", s.text);
+      $("state-" + which).textContent = labels[which][mode];
+      $("box-" + which).style.stroke = mode === "active" ? s.color : "";
+    }
+    function setLinks(active) {
+      var on = active === "primary" ? "link-primary" : "link-dr";
+      var off = active === "primary" ? "link-dr" : "link-primary";
+      $(on).setAttribute("stroke", "var(--patina)"); $(on).removeAttribute("stroke-dasharray");
+      $(off).setAttribute("stroke", "var(--line)"); $(off).setAttribute("stroke-dasharray", "6 6");
+    }
+    function setRepl(visible, direction) {
+      var r = $("repl");
+      r.style.opacity = visible ? 1 : 0;
+      $("repl-label").style.opacity = visible ? 1 : 0;
+      r.setAttribute("d", direction === "up" ? "M380 120 L 380 174" : "M380 174 L 380 120");
+    }
+
+    function render(seq) {
+      steps.innerHTML = "";
+      return seq.map(function (step) {
+        var li = document.createElement("li");
+        li.className = "pending";
+        var time = document.createElement("time"); time.textContent = step.t;
+        var text = document.createElement("span");
+        // Los nombres de región no se parten en el guion (contenido estático, sin entrada del usuario).
+        text.innerHTML = step.text.replace(/([a-z]{2}-[a-z]+-\d)/g, '<span class="nowrap">$1</span>');
+        li.append(time, text);
+        steps.appendChild(li);
+        return li;
+      });
+    }
+
+    function run(seq, nextState, nextLabel) {
+      timers.forEach(clearTimeout); timers = [];
+      var items = render(seq);
+      btn.disabled = true;
+      seq.forEach(function (step, i) {
+        var li = items[i];
+        timers.push(setTimeout(function () {
+          step.act(); li.classList.remove("pending"); li.classList.add("done");
+          if (i === seq.length - 1) { state = nextState; btn.textContent = nextLabel; btn.disabled = false; }
+        }, reduce ? 0 : 300 + i * 1100));
+      });
+    }
+
+    render(failover);
+
+    btn.addEventListener("click", function () {
+      if (state === "primary") run(failover, "dr", "Volver a sa-east-1");
+      else run(failback, "primary", "Simular caída de sa-east-1");
+    });
+  })();
+</script>
+</body>
+</html>

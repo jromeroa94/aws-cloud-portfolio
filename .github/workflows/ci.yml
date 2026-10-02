@@ -1,0 +1,124 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  TF_VERSION: "1.16.5"
+  TF_IN_AUTOMATION: "true"
+
+jobs:
+  terraform:
+    name: Terraform · ${{ matrix.dir }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        dir:
+          - bootstrap
+          - modules/vpc
+          - modules/app-stack
+          - projects/01-multi-region-ha-dr
+          - projects/02-serverless-order-pipeline
+          - projects/03-security-baseline
+          - projects/04-finops-automation
+          - projects/05-observability
+    defaults:
+      run:
+        working-directory: ${{ matrix.dir }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - uses: terraform-linters/setup-tflint@v4
+
+      - name: Formato
+        run: terraform fmt -check -recursive -diff
+
+      - name: Init sin backend
+        run: terraform init -backend=false -input=false
+
+      - name: Validate
+        run: terraform validate
+
+      - name: TFLint
+        run: |
+          tflint --init --config "$GITHUB_WORKSPACE/.tflint.hcl"
+          tflint --config "$GITHUB_WORKSPACE/.tflint.hcl" --format compact
+
+      - name: Tests (proveedor simulado, sin credenciales)
+        run: |
+          if ls tests/*.tftest.hcl >/dev/null 2>&1; then
+            terraform test
+          else
+            echo "Sin tests de Terraform en ${{ matrix.dir }}"
+          fi
+
+  security-scan:
+    name: Checkov (IaC security)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write # publica los hallazgos en la pestaña Security
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkov
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: .
+          framework: terraform,github_actions,secrets
+          config_file: .checkov.yaml
+          output_format: cli,sarif
+          output_file_path: console,results.sarif
+
+      - name: Subir resultados a GitHub code scanning
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: results.sarif
+          category: checkov
+
+  python:
+    name: Python · lint y tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: projects/*/requirements-dev.txt
+
+      - name: Dependencias
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff
+          for req in projects/*/requirements-dev.txt; do pip install -r "$req"; done
+
+      - name: Ruff
+        run: |
+          ruff check .
+          ruff format --check .
+
+      - name: Pytest
+        run: |
+          for project in projects/02-serverless-order-pipeline projects/04-finops-automation; do
+            echo "::group::$project"
+            (cd "$project" && pytest)
+            echo "::endgroup::"
+          done

@@ -1,0 +1,49 @@
+#!/bin/bash
+# Bootstrap de la instancia: nginx en :8080 con /health y una página que muestra
+# la región y la AZ que atiende la petición (útil para comprobar la conmutación).
+set -euo pipefail
+
+dnf install -y nginx
+
+TOKEN=$(curl -sS -X PUT "http://169.254.169.254/latest/api/token" \
+  -H "X-aws-ec2-metadata-token-ttl-seconds: 300")
+imds() {
+  curl -sS -H "X-aws-ec2-metadata-token: $${TOKEN}" "http://169.254.169.254/latest/meta-data/$1"
+}
+REGION=$(imds placement/region)
+AZ=$(imds placement/availability-zone)
+INSTANCE_ID=$(imds instance-id)
+
+mkdir -p /usr/share/nginx/app
+cat > /usr/share/nginx/app/index.html <<HTML
+<!doctype html>
+<html lang="es">
+<head><meta charset="utf-8"><title>aws-cloud-portfolio</title></head>
+<body style="font-family:system-ui;margin:3rem">
+  <h1>Warm standby multi-región</h1>
+  <p>Rol DR: <strong>${dr_role}</strong></p>
+  <p>Región: <strong>$${REGION}</strong> · AZ: <strong>$${AZ}</strong></p>
+  <p>Instancia: <code>$${INSTANCE_ID}</code></p>
+</body>
+</html>
+HTML
+
+cat > /etc/nginx/conf.d/app.conf <<'CONF'
+server {
+    listen 8080 default_server;
+    server_tokens off;
+    root /usr/share/nginx/app;
+
+    location = /health {
+        access_log off;
+        default_type text/plain;
+        return 200 "ok\n";
+    }
+
+    location / {
+        try_files $uri /index.html;
+    }
+}
+CONF
+
+systemctl enable --now nginx

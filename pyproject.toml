@@ -1,0 +1,20 @@
+[project]
+name = "aws-cloud-portfolio"
+version = "1.0.0"
+description = "Funciones Lambda en Python del portfolio de ingeniería cloud en AWS"
+requires-python = ">=3.13"
+
+[tool.ruff]
+line-length = 120
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "S", "BLE", "C4", "SIM", "RUF"]
+# S101: assert es la forma idiomática de pytest. RUF001-003: el código está en español.
+ignore = ["S101", "RUF001", "RUF002", "RUF003"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["order_processor", "cost_hygiene"]
+
+[tool.pytest.ini_options]
+addopts = "-q --strict-markers"

@@ -1,0 +1,23 @@
+name        = "portfolio"
+environment = "prod"
+cost_center = "platform"
+
+primary_region = "sa-east-1"
+dr_region      = "us-east-1"
+
+# Para un laboratorio que se destruye el mismo día:
+deletion_protection = false
+
+# DNS opcional (sin estos valores no se crean registros de failover):
+# route53_zone_id = "Z0123456789ABCDEFGHIJ"
+# app_fqdn        = "app.ejemplo.cl"
+# certificate_arns = {
+#   primary = "arn:aws:acm:sa-east-1:123456789012:certificate/..."
+#   dr      = "arn:aws:acm:us-east-1:123456789012:certificate/..."
+# }
+
+# alarm_topic_arns = {
+#   primary   = "arn:aws:sns:sa-east-1:123456789012:alerts"
+#   dr        = "arn:aws:sns:us-east-1:123456789012:alerts"
+#   us_east_1 = "arn:aws:sns:us-east-1:123456789012:alerts"
+# }

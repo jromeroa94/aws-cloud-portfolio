@@ -1,0 +1,25 @@
+region       = "sa-east-1"
+environment  = "prod"
+service_name = "portfolio"
+
+# Salidas de los proyectos 01 y 02 (terraform output en cada uno):
+alb_arn_suffix          = "app/portfo20261002/0123456789abcdef"
+target_group_arn_suffix = "targetgroup/portfo20261002/0123456789abcdef"
+asg_name                = "portfolio-prod-primary-20261002000000000000000001"
+db_cluster_identifier   = "portfolio-prod-primary"
+
+lambda_function_names = ["orders-dev-order-processor"]
+queue_names           = ["orders-dev-ingest"]
+dlq_names             = ["orders-dev-ingest-dlq", "orders-dev-shipping-dlq"]
+app_log_group_names   = ["/aws/lambda/orders-dev-order-processor"]
+
+vpc_flow_log_group_name   = "/vpc/portfolio-prod-primary/flow-logs"
+cloudtrail_log_group_name = "/aws/cloudtrail/security-baseline-trail"
+
+availability_slo        = 0.999
+latency_p99_threshold_s = 1.0
+
+# page_topic_arn   = "arn:aws:sns:sa-east-1:123456789012:oncall-page"
+# ticket_topic_arn = "arn:aws:sns:sa-east-1:123456789012:oncall-ticket"
+
+opensearch = { enabled = false }

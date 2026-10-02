@@ -1,0 +1,3 @@
+region            = "sa-east-1"
+state_bucket_name = "tfstate-123456789012-sa-east-1"
+github_repository = "jromeroa94/aws-cloud-portfolio"
