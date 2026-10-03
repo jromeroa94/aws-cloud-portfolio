@@ -14,7 +14,7 @@
 
 ## Decisión
 
-**Warm standby** entre `sa-east-1` (primaria, menor latencia hacia Chile) y `us-east-1` (DR):
+**Warm standby** entre `sa-east-1` (primaria, menor latencia hacia Sudamérica) y `us-east-1` (DR):
 
 - **Aurora Global Database**: replicación a nivel de almacenamiento con lag habitualmente por debajo de un segundo. Es lo que hace alcanzable el RPO.
 - **Cómputo mínimo encendido en DR** (1 instancia, 1 NAT): la región ya está probada y caliente; el failover solo escala.
