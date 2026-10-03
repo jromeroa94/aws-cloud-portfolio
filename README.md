@@ -111,7 +111,7 @@ Para desplegar: sigue [`bootstrap/README.md`](bootstrap/README.md) y después el
 
 Ingeniero DevOps/Cloud con experiencia en NTT Data, Indra (Centro de Excelencia DevSecOps), Smartjob, Slashmobility y Zoluxiones, entre otras. Trabajo habitual con Kubernetes (EKS, AKS, OpenShift), Terraform, Terragrunt, Ansible, CI/CD y Python. Certificaciones: AWS Cloud Practitioner, AZ-104, AZ-305, AZ-700, AZ-140, AZ-900 y LPIC-1.
 
-Web del portfolio: <https://jromeroa94.github.io/aws-cloud-portfolio/> · Consultora: [nimbodev.com](https://nimbodev.com)
+Web del portfolio: <https://portfolio.nimbodev.com> · Consultora: [nimbodev.com](https://nimbodev.com)
 
 ---
 
