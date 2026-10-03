@@ -1,0 +1,122 @@
+# Identidad y permisos de los runners self-hosted (ARC) dentro del clúster.
+#
+# Los runners corren DENTRO del clúster GKE, así que kubectl y helm no necesitan kubeconfig ni
+# credenciales de clúster: usan el token de la KSA arc-runner montado en el pod, acotado por los
+# Roles de abajo (solo el namespace `platform` y lo justo para operar sus propios pods de trabajo
+# en `arc-runners`). Hacia Google Cloud (Artifact Registry) la misma KSA se traduce en la GSA
+# github-runners@PROJECT_ID.iam.gserviceaccount.com por Workload Identity.
+#
+# El bootstrap sustituye el email de la GSA con sed a partir de vars.GCP_RUNNERS_SA.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: arc-runner
+  namespace: arc-runners
+  labels:
+    app.kubernetes.io/name: arc-runner
+    app.kubernetes.io/part-of: gke-runners
+  annotations:
+    iam.gke.io/gcp-service-account: github-runners@PROJECT_ID.iam.gserviceaccount.com
+---
+# Permisos que el chart gha-runner-scale-set crearía para su propia KSA en modo kubernetes y que
+# deja de crear al fijar template.spec.serviceAccountName: el hook del runner crea y gestiona los
+# pods de trabajo (jobs con `container:`) en este namespace.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: arc-runner-kube-mode
+  namespace: arc-runners
+  labels:
+    app.kubernetes.io/part-of: gke-runners
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "create", "delete"]
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["get", "create"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "create", "delete"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "create", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: arc-runner-kube-mode
+  namespace: arc-runners
+  labels:
+    app.kubernetes.io/part-of: gke-runners
+subjects:
+  - kind: ServiceAccount
+    name: arc-runner
+    namespace: arc-runners
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: arc-runner-kube-mode
+---
+# Despliegue con Helm del chart charts/api en el namespace `platform`: exactamente los tipos de
+# recurso que renderiza el chart, más los que Helm necesita para guardar la release (secrets) y
+# los del paso de humo (pods, pods/attach). Ningún permiso de clúster ni sobre otros namespaces.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: platform-deployer
+  namespace: platform
+  labels:
+    app.kubernetes.io/part-of: gke-runners
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "services", "serviceaccounts", "configmaps", "secrets", "events"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get", "list", "watch"]
+  # kubectl run -i (prueba de humo) se conecta al pod por attach.
+  - apiGroups: [""]
+    resources: ["pods/attach"]
+    verbs: ["get", "create"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["policy"]
+    resources: ["poddisruptionbudgets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["networkpolicies"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["gateway.networking.k8s.io"]
+    resources: ["gateways", "httproutes"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["networking.gke.io"]
+    resources: ["healthcheckpolicies", "gcpbackendpolicies"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["monitoring.googleapis.com"]
+    resources: ["podmonitorings"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: platform-deployer
+  namespace: platform
+  labels:
+    app.kubernetes.io/part-of: gke-runners
+subjects:
+  - kind: ServiceAccount
+    name: arc-runner
+    namespace: arc-runners
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: platform-deployer

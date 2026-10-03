@@ -1,0 +1,34 @@
+{{- if .Values.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "platform-api.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "platform-api.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "platform-api.fullname" . }}
+  minReplicas: {{ .Values.autoscaling.minReplicas | default .Values.replicaCount }}
+  maxReplicas: {{ .Values.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.autoscaling.targetCPUUtilizationPercentage }}
+  behavior:
+    # Escala hacia arriba sin esperar; hacia abajo solo tras una ventana estable y como mucho la
+    # mitad de las réplicas por minuto, para no quedarse corto justo después de un pico.
+    scaleUp:
+      stabilizationWindowSeconds: 0
+    scaleDown:
+      stabilizationWindowSeconds: {{ .Values.autoscaling.scaleDownStabilizationSeconds }}
+      policies:
+        - type: Percent
+          value: 50
+          periodSeconds: 60
+{{- end }}

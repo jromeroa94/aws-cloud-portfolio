@@ -1,0 +1,43 @@
+{{- if .Values.gateway.enabled }}
+# Gateway API de GKE: un Application Load Balancer global externo gestionado por Google. El
+# controlador de GKE crea el balanceador, los NEG y las reglas de reenvío a partir de este objeto
+# y de las políticas asociadas (HealthCheckPolicy, GCPBackendPolicy con Cloud Armor).
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: {{ include "platform-api.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "platform-api.labels" . | nindent 4 }}
+  {{- with .Values.gateway.tls.certmap }}
+  annotations:
+    # Certificados TLS gestionados por Certificate Manager (mapa creado por Terraform).
+    networking.gke.io/certmap: {{ . | quote }}
+  {{- end }}
+spec:
+  gatewayClassName: {{ .Values.gateway.className }}
+  {{- with .Values.gateway.addressName }}
+  # IP global reservada: estable entre recreaciones del Gateway y apuntable desde DNS.
+  addresses:
+    - type: networking.gke.io/named-address
+      value: {{ . | quote }}
+  {{- end }}
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+      allowedRoutes:
+        namespaces:
+          from: Same
+    {{- if .Values.gateway.tls.certmap }}
+    - name: https
+      protocol: HTTPS
+      port: 443
+      tls:
+        # Con certmap no se indican certificateRefs: el balanceador toma los certificados del mapa.
+        mode: Terminate
+      allowedRoutes:
+        namespaces:
+          from: Same
+    {{- end }}
+{{- end }}

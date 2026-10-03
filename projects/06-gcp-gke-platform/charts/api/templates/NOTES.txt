@@ -1,0 +1,32 @@
+{{ .Chart.Name }} {{ .Chart.Version }} desplegado como release "{{ .Release.Name }}" en el namespace "{{ .Release.Namespace }}".
+
+Imagen: {{ include "platform-api.image" . }}
+KSA:    {{ include "platform-api.serviceAccountName" . }}{{ if .Values.gcpServiceAccount }} → {{ .Values.gcpServiceAccount }} (Workload Identity){{ end }}
+{{- if not .Values.gcpServiceAccount }}
+
+AVISO: gcpServiceAccount está vacío. La KSA no tiene anotación de Workload Identity y la app
+no obtendrá credenciales de Google. Pásalo con --set gcpServiceAccount=<gsa>@<proyecto>.iam.gserviceaccount.com
+{{- end }}
+
+Estado del despliegue:
+  kubectl -n {{ .Release.Namespace }} rollout status deployment/{{ include "platform-api.fullname" . }}
+  kubectl -n {{ .Release.Namespace }} get pods,hpa,pdb -l app.kubernetes.io/instance={{ .Release.Name }}
+{{- if .Values.gateway.enabled }}
+
+Balanceador (el Gateway tarda unos minutos en programarse la primera vez):
+  kubectl -n {{ .Release.Namespace }} get gateway {{ include "platform-api.fullname" . }}
+  kubectl -n {{ .Release.Namespace }} get gateway {{ include "platform-api.fullname" . }} -o jsonpath='{.status.addresses[0].value}'
+  {{- if .Values.gateway.tls.certmap }}
+  curl -sS https://<host>/api/v1/whoami
+  {{- else }}
+  curl -sS http://$(kubectl -n {{ .Release.Namespace }} get gateway {{ include "platform-api.fullname" . }} -o jsonpath='{.status.addresses[0].value}')/api/v1/whoami
+  {{- end }}
+{{- end }}
+
+Prueba sin pasar por el balanceador:
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "platform-api.fullname" . }} 8080:{{ .Values.service.port }}
+  curl -sS http://localhost:8080/healthz && curl -sS http://localhost:8080/api/v1/whoami
+{{- if .Values.monitoring.enabled }}
+
+Métricas: PodMonitoring "{{ include "platform-api.fullname" . }}" ({{ .Values.monitoring.path }} cada {{ .Values.monitoring.interval }}) → Cloud Monitoring / Metrics Explorer (PromQL).
+{{- end }}

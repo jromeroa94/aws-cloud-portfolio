@@ -1,0 +1,127 @@
+# Valores del chart gha-runner-scale-set (ARC) 0.15.0 para el runner scale set "gke-runners".
+# Se instala en el namespace arc-runners después del controlador:
+#
+#   helm upgrade --install gke-runners \
+#     oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set \
+#     --version 0.15.0 -n arc-runners -f runner-set-values.yaml --wait
+#
+# Los jobs lo usan con `runs-on: gke-runners`.
+
+# Repositorio al que se registran los runners (el workflow lo sobreescribe con github.repository
+# para que un fork funcione sin editar este archivo).
+githubConfigUrl: https://github.com/jromeroa94/aws-cloud-portfolio
+
+# Secreto pre-creado por el bootstrap desde Secret Manager con las claves github_app_id,
+# github_app_installation_id y github_app_private_key. Nunca se escribe en el repo ni en values.
+githubConfigSecret: arc-github-app # checkov:skip=CKV_SECRET_6:Es el nombre del Secret de Kubernetes, no un valor secreto
+
+# Nombre del scale set = etiqueta de runs-on. Fijado: el workflow gcp-platform.yml lo usa tal cual.
+runnerScaleSetName: gke-runners
+
+# FinOps: el pool de runners es Spot y escala a cero. Sin jobs en cola no hay ningún pod de runner
+# y el cluster autoscaler retira los nodos; el coste del CI es exactamente el de los minutos de
+# job. El precio es ~30-60 s de arranque en frío por job (crear nodo/pod + PVC de trabajo).
+minRunners: 0
+# Techo que acota el gasto y el tamaño máximo del pool; el workflow lanza como mucho 2 builds
+# en paralelo más los jobs secuenciales.
+maxRunners: 6
+
+# Modo "kubernetes" en lugar de Docker-in-Docker: el runner no necesita un contenedor privilegiado
+# ni un socket de Docker. Cuando un job declara `container:` (p. ej. kaniko), el hook de
+# Kubernetes crea un pod de trabajo aparte en este mismo namespace y comparte con él el volumen
+# _work. Las imágenes se construyen con kaniko, que no requiere daemon Docker ni privilegios.
+containerMode:
+  type: kubernetes
+  kubernetesModeWorkVolumeClaim:
+    accessModes: ["ReadWriteOnce"]
+    # Persistent Disk balanceado (StorageClass por defecto de GKE). El PVC es efímero: se crea
+    # con cada runner y se destruye con él.
+    storageClassName: standard-rwo
+    resources:
+      requests:
+        storage: 10Gi
+
+template:
+  spec:
+    # KSA con Workload Identity (github-runners@PROJECT.iam.gserviceaccount.com) y RBAC propio
+    # (runners/rbac.yaml). Al fijar serviceAccountName el chart NO crea su Role de modo kubernetes,
+    # por eso rbac.yaml incluye esas reglas además de las de despliegue en `platform`.
+    serviceAccountName: arc-runner
+    # Pool dedicado: instancias Spot etiquetadas workload=runners y con taint para que ninguna
+    # otra carga caiga en ellas (y los runners no caigan en los nodos de la plataforma).
+    nodeSelector:
+      workload: runners
+    tolerations:
+      - key: dedicated
+        operator: Equal
+        value: runners
+        effect: NoSchedule
+    # La imagen oficial ejecuta el runner como usuario `runner` (uid/gid 1001). fsGroup hace
+    # escribible el PVC de trabajo sin chown adicional.
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 1001
+      runAsGroup: 1001
+      fsGroup: 1001
+      seccompProfile:
+        type: RuntimeDefault
+    # Un runner preemptado (Spot) falla el job; GitHub lo muestra como error del runner y basta
+    # con relanzarlo. Se asume para un CI de portfolio a cambio del ahorro de Spot.
+    terminationGracePeriodSeconds: 60
+    containers:
+      - name: runner
+        # Versión fijada. Actualizar periódicamente (p. ej. con Renovate): GitHub rechaza runners
+        # demasiado antiguos cuando la actualización automática está desactivada, como en ARC.
+        image: ghcr.io/actions/actions-runner:2.337.0
+        command: ["/home/runner/run.sh"]
+        env:
+          # Permite jobs sin `container:` (helm, kubectl, trivy corren directamente en el runner).
+          # El chart lo fija en "true" si no se declara aquí.
+          - name: ACTIONS_RUNNER_REQUIRE_JOB_CONTAINER
+            value: "false"
+          # Plantilla que el hook aplica a los pods de trabajo (identidad, pool, recursos):
+          # runners/arc/hook-template.yaml, montada desde el ConfigMap arc-hook-template.
+          - name: ACTIONS_RUNNER_CONTAINER_HOOK_TEMPLATE
+            value: /home/runner/pod-templates/default.yaml
+        resources:
+          requests:
+            cpu: 500m
+            memory: 1Gi
+          limits:
+            cpu: "2"
+            memory: 4Gi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+              - ALL
+        volumeMounts:
+          - name: pod-templates
+            mountPath: /home/runner/pod-templates
+            readOnly: true
+    # El chart añade el volumen `work` (PVC efímero) y lo monta en /home/runner/_work.
+    volumes:
+      - name: pod-templates
+        configMap:
+          name: arc-hook-template
+
+# El listener (un pod por scale set, en arc-systems) se queda en el pool estable: sin tolerations
+# no puede caer en el pool Spot. Con uid fijo para cumplir Pod Security "restricted".
+listenerTemplate:
+  spec:
+    containers:
+      - name: listener
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+              - ALL
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 200m
+            memory: 128Mi

@@ -11,14 +11,14 @@
 <meta property="og:url" content="https://portfolio.nimbodev.com/">
 <meta property="og:site_name" content="Portfolio de Johan Romero Aguirre">
 <meta property="og:title" content="Johan Romero Aguirre · Ingeniero DevOps y Cloud (Azure · AWS · GCP)">
-<meta property="og:description" content="Cinco proyectos AWS escritos como para producción: HA/DR multi-región, pipeline serverless en Python, baseline de seguridad, FinOps y observabilidad por SLOs. Terraform, tests y decisiones documentadas.">
+<meta property="og:description" content="Seis proyectos en AWS y Google Cloud escritos como para producción: HA/DR multi-región, serverless en Python, seguridad, FinOps, SLOs y una plataforma GKE con runners self-hosted de GitHub Actions. Terraform, tests y decisiones documentadas.">
 <meta property="og:image" content="https://portfolio.nimbodev.com/og.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="Johan Romero Aguirre, ingeniero DevOps y Cloud en Azure, AWS y GCP. Infraestructura que sigue en pie cuando cae una región.">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Johan Romero Aguirre · Ingeniero DevOps y Cloud (Azure · AWS · GCP)">
-<meta name="twitter:description" content="Cinco proyectos AWS escritos como para producción: HA/DR multi-región, serverless en Python, seguridad, FinOps y SLOs.">
+<meta name="twitter:description" content="Seis proyectos en AWS y Google Cloud: HA/DR multi-región, serverless en Python, seguridad, FinOps, SLOs y GKE con runners self-hosted.">
 <meta name="twitter:image" content="https://portfolio.nimbodev.com/og.png">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='10' cy='22' r='6' fill='%232F8F83'/%3E%3Ccircle cx='22' cy='10' r='6' fill='none' stroke='%232F8F83' stroke-width='3'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -188,6 +188,7 @@
   }
   @media (min-width: 860px) { .project { grid-template-columns: 15rem 1fr 12rem; align-items: start; } }
   .project h3 { margin: 0; font-size: 1.3125rem; line-height: 1.25; letter-spacing: -0.01em; }
+  .project .cloud-tag { display: inline-block; vertical-align: middle; margin-left: 10px; padding: 2px 10px; border-radius: 999px; font-size: 0.75rem; font-weight: 700; letter-spacing: .04em; color: var(--patina-ink); border: 1.5px solid var(--patina); }
   .project .path { display: block; font-size: 0.875rem; color: var(--muted); font-weight: 400; margin-top: 4px; }
   .project p { margin: 0 0 10px; max-width: 60ch; }
   .project .proof { color: var(--muted); font-size: 0.9375rem; margin: 0; }
@@ -245,7 +246,7 @@
       <div>
         <p class="eyebrow">Ingeniero DevOps y Cloud · Azure · AWS · GCP</p>
         <h1>Johan Romero Aguirre</h1>
-        <p class="tagline">Infraestructura AWS que sigue en pie cuando cae una región.</p>
+        <p class="tagline">Infraestructura que sigue en pie cuando cae una región.</p>
         <p class="lede"><strong>Unos diez años</strong> construyendo plataformas para banca, seguros y energía. Diseño infraestructura en Terraform con alta disponibilidad, seguridad desde el diseño y costes bajo control, y documento por qué tomo cada decisión.</p>
         <div class="actions">
           <a class="btn repo-link" href="#" data-path="">Ver el código en GitHub</a>
@@ -309,8 +310,8 @@
     </div>
 
     <section id="proyectos" aria-labelledby="proyectos-h">
-      <h2 id="proyectos-h">Cinco proyectos, una plataforma</h2>
-      <p class="section-intro">Cada proyecto es Terraform que se puede desplegar, con su README de decisiones, tests que corren sin credenciales de AWS y un análisis de seguridad en cada pull request.</p>
+      <h2 id="proyectos-h">Seis proyectos, dos nubes</h2>
+      <p class="section-intro">Cada proyecto es Terraform que se puede desplegar, con su README de decisiones, tests que corren sin credenciales de AWS ni de Google Cloud y un análisis de seguridad en cada pull request.</p>
 
       <ul class="projects">
         <li class="project">
@@ -372,6 +373,17 @@
             <p><a class="code repo-link" href="#" data-path="/tree/main/projects/05-observability">Abrir el proyecto</a></p>
           </div>
         </li>
+        <li class="project">
+          <h3>Plataforma GKE con runners self-hosted <span class="cloud-tag">Google Cloud</span><span class="path">projects/06-gcp-gke-platform</span></h3>
+          <div>
+            <p>Clúster GKE privado y regional en el que los propios runners de GitHub Actions (ARC sobre un pool Spot que escala a cero) construyen las imágenes con kaniko, las escanean con Trivy y despliegan con Helm. Cloud Armor y Gateway API delante, SLOs con burn rate detrás, y ni una sola clave de cuenta de servicio en el proyecto: Workload Identity Federation para GitHub, Workload Identity para los Pods y un job en Python que lo audita a diario.</p>
+            <p class="proof">Chart endurecido (sin root, filesystem de solo lectura, NetworkPolicy), 9 bloques de terraform test, 48 tests de Python y 96 checks de Checkov.</p>
+          </div>
+          <div>
+            <ul class="stack"><li>GKE</li><li>Terraform</li><li>Helm</li><li>GitHub Actions · ARC</li><li>kaniko · Trivy</li><li>Cloud Armor</li><li>Python</li></ul>
+            <p><a class="code repo-link" href="#" data-path="/tree/main/projects/06-gcp-gke-platform">Abrir el proyecto</a></p>
+          </div>
+        </li>
       </ul>
     </section>
 
@@ -395,12 +407,16 @@
           <h3>Alertar sobre el impacto, no sobre el ruido</h3>
           <p>Diez errores pueden ser nada o pueden ser todo, según el tráfico. Por eso las alertas miden el consumo del presupuesto de error. <a class="repo-link" href="#" data-path="/blob/main/docs/adr/0004-alertas-por-slo.md">Ver ADR</a></p>
         </div>
+        <div>
+          <h3>Los runners de CI, dentro del clúster</h3>
+          <p>Un clúster privado no debería abrir su plano de control a los runners de GitHub. Los runners viven en GKE, despliegan con su identidad de Kubernetes y construyen con kaniko, sin Docker privilegiado ni claves. <a class="repo-link" href="#" data-path="/blob/main/docs/adr/0005-runners-self-hosted-en-gke.md">Ver ADR</a></p>
+        </div>
       </div>
     </section>
 
     <section aria-labelledby="req-h">
       <h2 id="req-h">Qué buscar en el código</h2>
-      <p class="section-intro">Si estás evaluando un perfil de ingeniería cloud en AWS, aquí está dónde comprobar cada competencia.</p>
+      <p class="section-intro">Si estás evaluando un perfil de ingeniería cloud o DevOps, aquí está dónde comprobar cada competencia.</p>
       <div class="table-scroll">
         <table class="reqs">
           <thead><tr><th scope="col">Competencia</th><th scope="col">Dónde verla</th></tr></thead>
@@ -413,6 +429,9 @@
             <tr><td>Costes y eficiencia operativa</td><td>Proyecto 04 y etiquetas de coste en todos los recursos</td></tr>
             <tr><td>Monitoreo y logs con CloudWatch y ELK</td><td>Proyecto 05</td></tr>
             <tr><td>CI/CD</td><td>Workflows de GitHub Actions con Checkov, TFLint y OIDC</td></tr>
+            <tr><td>GCP en producción: IAM, redes y GKE</td><td>Proyecto 06: VPC privada con Cloud NAT, Workload Identity Federation, GKE regional con Dataplane V2</td></tr>
+            <tr><td>Kubernetes: Helm y seguridad de contenedores</td><td>Chart <code>platform-api</code> (sin root, solo lectura, NetworkPolicy, PDB, HPA), kaniko y Trivy en el pipeline</td></tr>
+            <tr><td>GitHub Actions: runners self-hosted, secretos y environments</td><td>ARC en GKE con pool Spot a cero, Secret Manager, environments <code>dev</code> → <code>production</code></td></tr>
           </tbody>
         </table>
       </div>
@@ -420,11 +439,12 @@
 
     <section id="experiencia" aria-labelledby="experiencia-h">
       <h2 id="experiencia-h">Experiencia</h2>
-      <p class="section-intro">Plataformas cloud y DevSecOps para banca, seguros y energía, desde consultoras internacionales y equipos de producto. Además dirijo <a href="https://nimbodev.com">nimbodev</a>, una consultora de cinco ingenieros senior.</p>
+      <p class="section-intro">Plataformas cloud y DevSecOps para banca, seguros y energía en Azure, AWS y GCP, desde consultoras internacionales y equipos de producto. Hoy, en el equipo de plataforma de Scotiabank Perú (CI/CD sobre Kubernetes/Anthos). Además dirijo <a href="https://nimbodev.com">nimbodev</a>, una consultora de cinco ingenieros senior.</p>
       <div class="two">
         <div>
           <h3>Dónde he trabajado</h3>
           <ul class="plain">
+            <li>Scotiabank Perú<span>, equipo de plataforma DevOps</span></li>
             <li>NTT Data</li>
             <li>Indra<span>, Centro de Excelencia DevSecOps</span></li>
             <li>Smartjob</li>

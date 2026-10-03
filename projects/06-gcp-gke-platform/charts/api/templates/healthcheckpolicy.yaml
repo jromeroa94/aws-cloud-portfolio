@@ -1,0 +1,28 @@
+{{- if .Values.gateway.enabled }}
+# Health check del balanceador contra cada pod del NEG. Sin esta política GKE comprobaría el
+# puerto del Service con "/" y la API respondería 404.
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: {{ include "platform-api.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "platform-api.labels" . | nindent 4 }}
+spec:
+  default:
+    checkIntervalSec: {{ .Values.gateway.healthCheck.checkIntervalSec }}
+    timeoutSec: {{ .Values.gateway.healthCheck.timeoutSec }}
+    healthyThreshold: {{ .Values.gateway.healthCheck.healthyThreshold }}
+    unhealthyThreshold: {{ .Values.gateway.healthCheck.unhealthyThreshold }}
+    logConfig:
+      enabled: false
+    config:
+      type: HTTP
+      httpHealthCheck:
+        port: {{ .Values.containerPort }}
+        requestPath: {{ .Values.gateway.healthCheck.path }}
+  targetRef:
+    group: ""
+    kind: Service
+    name: {{ include "platform-api.fullname" . }}
+{{- end }}

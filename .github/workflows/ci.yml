@@ -32,6 +32,7 @@ jobs:
           - projects/03-security-baseline
           - projects/04-finops-automation
           - projects/05-observability
+          - projects/06-gcp-gke-platform
     defaults:
       run:
         working-directory: ${{ matrix.dir }}
@@ -117,8 +118,42 @@ jobs:
 
       - name: Pytest
         run: |
-          for project in projects/02-serverless-order-pipeline projects/04-finops-automation; do
+          for project in projects/02-serverless-order-pipeline projects/04-finops-automation projects/06-gcp-gke-platform; do
             echo "::group::$project"
             (cd "$project" && pytest)
             echo "::endgroup::"
           done
+
+  helm:
+    name: Helm · chart platform-api
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: projects/06-gcp-gke-platform
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.4
+
+      - name: Lint
+        run: helm lint charts/api --strict
+
+      - name: Render (valores por defecto y producción)
+        run: |
+          helm template platform-api charts/api \
+            --set gcpServiceAccount=platform-api@demo.iam.gserviceaccount.com > /tmp/default.yaml
+          helm template platform-api charts/api \
+            --set gcpServiceAccount=platform-api@demo.iam.gserviceaccount.com \
+            --set replicaCount=3 --set-string image.tag=0123456 \
+            --set gateway.tls.certmap=platform-certs > /tmp/prod.yaml
+          echo "Documentos renderizados: $(grep -c '^kind:' /tmp/default.yaml) / $(grep -c '^kind:' /tmp/prod.yaml)"
+
+      - name: Validar los manifiestos contra los esquemas de Kubernetes
+        uses: docker://ghcr.io/yannh/kubeconform:v0.6.7
+        with:
+          args: >-
+            -strict -summary -ignore-missing-schemas
+            -kubernetes-version 1.31.0
+            /tmp/default.yaml /tmp/prod.yaml

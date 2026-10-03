@@ -1,0 +1,26 @@
+{{- if .Values.gateway.enabled }}
+# Configuración del backend service del balanceador: Cloud Armor en el borde (WAF, rate limiting
+# y geobloqueo definidos en Terraform), tiempos de espera, drenado y logging de peticiones.
+apiVersion: networking.gke.io/v1
+kind: GCPBackendPolicy
+metadata:
+  name: {{ include "platform-api.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "platform-api.labels" . | nindent 4 }}
+spec:
+  default:
+    {{- with .Values.cloudArmorPolicy }}
+    securityPolicy: {{ . | quote }}
+    {{- end }}
+    timeoutSec: {{ .Values.gateway.backend.timeoutSec }}
+    connectionDraining:
+      drainingTimeoutSec: {{ .Values.gateway.backend.drainingTimeoutSec }}
+    logging:
+      enabled: {{ .Values.gateway.backend.logging.enabled }}
+      sampleRate: {{ .Values.gateway.backend.logging.sampleRate }}
+  targetRef:
+    group: ""
+    kind: Service
+    name: {{ include "platform-api.fullname" . }}
+{{- end }}

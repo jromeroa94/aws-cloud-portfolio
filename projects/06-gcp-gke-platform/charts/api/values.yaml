@@ -1,0 +1,164 @@
+# Valores por defecto del chart platform-api.
+#
+# Los nombres marcados como "fijados por Terraform" deben coincidir con lo que crea
+# projects/06-gcp-gke-platform/*.tf (namespace, KSA, política de Cloud Armor, registro).
+# El pipeline (.github/workflows/gcp-platform.yml) sobreescribe image.*, gcpServiceAccount,
+# cloudArmorPolicy y env.* con las variables del repositorio.
+
+# Réplicas de partida. Con autoscaling.enabled el Deployment no fija `replicas` (lo gestiona
+# el HPA) y este valor pasa a ser el mínimo del HPA, de modo que `--set replicaCount=3`
+# en producción eleva el suelo de réplicas sin pelearse con el autoescalado.
+replicaCount: 2
+
+image:
+  # Artifact Registry (fijado por Terraform): ${REGION}-docker.pkg.dev/${PROJECT_ID}/platform/api
+  repository: southamerica-east1-docker.pkg.dev/PROJECT_ID/platform/api
+  # Vacío → se usa .Chart.AppVersion. El pipeline pasa el SHA del commit.
+  tag: ""
+  # IfNotPresent es seguro porque las etiquetas son inmutables (SHA de git), nunca "latest".
+  pullPolicy: IfNotPresent
+
+nameOverride: ""
+fullnameOverride: ""
+
+# Email de la Google Service Account vinculada por Workload Identity a la KSA de la app,
+# p. ej. platform-api@PROJECT_ID.iam.gserviceaccount.com (salida de Terraform). Sin él la
+# KSA se crea sin anotación y la app no obtiene credenciales de Google.
+gcpServiceAccount: ""
+
+# Política de Cloud Armor que aplica el balanceador (fijada por Terraform como "platform-edge").
+cloudArmorPolicy: "platform-edge"
+
+serviceAccount:
+  # Nombre fijado por Terraform: el binding roles/iam.workloadIdentityUser apunta a
+  # serviceAccount:PROJECT_ID.svc.id.goog[platform/platform-api].
+  name: platform-api
+  annotations: {}
+
+# Variables de entorno de la aplicación (además de POD_NAME, POD_NAMESPACE y NODE_NAME,
+# que se inyectan por downward API, y APP_VERSION, que toma el valor de image.tag).
+env:
+  # SHA del commit desplegado; el pipeline lo pasa con --set-string env.GIT_SHA=<sha>.
+  GIT_SHA: ""
+  # Proyecto de GCP (el pipeline lo pasa desde vars.GCP_PROJECT_ID).
+  PROJECT_ID: ""
+  # Segundos que la app sigue atendiendo tras SIGTERM mientras /readyz devuelve 503, para que el
+  # balanceador y los endpoints del NEG dejen de enviarle tráfico. Debe ser menor que
+  # terminationGracePeriodSeconds.
+  DRAIN_SECONDS: "10"
+
+# Entradas de entorno adicionales en formato Kubernetes (p. ej. valueFrom.secretKeyRef).
+# Los secretos de la plataforma se leen de Secret Manager vía Workload Identity, así que
+# normalmente queda vacío.
+extraEnv: []
+
+containerPort: 8080
+
+service:
+  type: ClusterIP
+  port: 80
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+# Tiempo máximo de apagado ordenado. Cubre DRAIN_SECONDS más el cierre de conexiones en vuelo.
+terminationGracePeriodSeconds: 30
+
+probes:
+  # La startup probe da hasta 60 s (30 × 2 s) al arranque antes de que liveness pueda reiniciar.
+  startup:
+    path: /healthz
+    periodSeconds: 2
+    failureThreshold: 30
+  liveness:
+    path: /healthz
+    periodSeconds: 10
+    timeoutSeconds: 2
+    failureThreshold: 3
+  readiness:
+    path: /readyz
+    periodSeconds: 5
+    timeoutSeconds: 2
+    failureThreshold: 2
+
+autoscaling:
+  enabled: true
+  # null → se usa replicaCount como mínimo (ver comentario de replicaCount).
+  minReplicas: null
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  # Ventana de estabilización del scale-down: evita oscilaciones tras picos cortos.
+  scaleDownStabilizationSeconds: 300
+
+podDisruptionBudget:
+  enabled: true
+  maxUnavailable: 1
+
+networkPolicy:
+  enabled: true
+  # Rangos de los proxies y health checks del balanceador global de Google. Son fijos y
+  # públicos: https://cloud.google.com/load-balancing/docs/https#firewall-rules
+  loadBalancerCidrs:
+    - 130.211.0.0/22
+    - 35.191.0.0/16
+  # Namespace de los colectores de Managed Service for Prometheus que raspan /metrics.
+  monitoringNamespace: gmp-system
+  # Pods del mismo namespace autorizados a llamar a la API (p. ej. la prueba de humo del
+  # pipeline, que se lanza con --labels=platform-api-client=true). Vacío → ninguno.
+  allowedClientLabels:
+    platform-api-client: "true"
+  # Egress HTTPS a Internet. La API no lo necesita; se deja cerrado por defecto y se abre solo
+  # si una funcionalidad futura llama a APIs externas.
+  allowEgressHttps: false
+
+gateway:
+  enabled: true
+  # Clase de balanceador: Application Load Balancer global externo gestionado (Envoy).
+  className: gke-l7-global-external-managed
+  # Nombre de una dirección IP global reservada (google_compute_global_address) para que la IP
+  # del Gateway sea estable y se pueda apuntar desde DNS. Vacío → IP efímera.
+  addressName: ""
+  # Hostnames que acepta la HTTPRoute. Vacío → cualquier host.
+  hostnames: []
+  tls:
+    # Nombre del mapa de certificados de Certificate Manager (google_certificate_manager_certificate_map).
+    # Con valor se añade el listener HTTPS 443 y la redirección HTTP→HTTPS. Vacío → solo HTTP.
+    certmap: ""
+  healthCheck:
+    # El balanceador comprueba cada endpoint del NEG directamente contra el pod.
+    path: /healthz
+    checkIntervalSec: 15
+    timeoutSec: 5
+    healthyThreshold: 1
+    unhealthyThreshold: 2
+  backend:
+    # Tiempo máximo de una petición en el backend.
+    timeoutSec: 30
+    # Tiempo que el balanceador sigue sirviendo conexiones abiertas a un endpoint que se retira
+    # (alineado con terminationGracePeriodSeconds).
+    drainingTimeoutSec: 30
+    logging:
+      enabled: true
+      # Fracción de peticiones registradas sobre 1 000 000 (1000000 = 100 %). Reducir en
+      # producción si el coste de Cloud Logging pesa más que la trazabilidad por petición.
+      sampleRate: 1000000
+
+monitoring:
+  # PodMonitoring de Managed Service for Prometheus (requiere managed_prometheus en el clúster).
+  enabled: true
+  interval: 30s
+  path: /metrics
+
+podAnnotations: {}
+podLabels: {}
+
+# La API nunca debe caer en el node pool de runners (taint dedicated=runners:NoSchedule);
+# estos campos quedan disponibles para afinar la programación sin tocar las plantillas.
+nodeSelector: {}
+tolerations: []
+affinity: {}

@@ -1,0 +1,79 @@
+{{- if .Values.networkPolicy.enabled }}
+# Microsegmentación de la API (requiere GKE Dataplane V2 o el addon de NetworkPolicy).
+# Principio: solo entra el balanceador y el colector de métricas; solo sale lo imprescindible.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "platform-api.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "platform-api.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "platform-api.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Proxies Envoy y health checks del Application Load Balancer global. Con NEG el balanceador
+    # se conecta directamente a la IP del pod, por eso se permiten estos rangos y no los nodos.
+    - from:
+        {{- range .Values.networkPolicy.loadBalancerCidrs }}
+        - ipBlock:
+            cidr: {{ . }}
+        {{- end }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.containerPort }}
+    # Colectores de Managed Service for Prometheus (PodMonitoring raspa /metrics por este puerto).
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.monitoringNamespace }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.containerPort }}
+    {{- with .Values.networkPolicy.allowedClientLabels }}
+    # Clientes internos autorizados explícitamente por etiqueta (prueba de humo del pipeline).
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- toYaml . | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: {{ $.Values.containerPort }}
+    {{- end }}
+  egress:
+    # Resolución DNS: kube-dns en kube-system y, si el clúster usa Cloud DNS para GKE, el
+    # metadata server (169.254.169.254:53).
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Metadata server de GKE: tokens de Workload Identity (puerto 80) y Cloud DNS (puerto 53).
+    - to:
+        - ipBlock:
+            cidr: 169.254.169.254/32
+      ports:
+        - protocol: TCP
+          port: 80
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    {{- if .Values.networkPolicy.allowEgressHttps }}
+    # HTTPS saliente (APIs de Google u otras externas). Desactivado por defecto: la API no lo usa.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - protocol: TCP
+          port: 443
+    {{- end }}
+{{- end }}

@@ -1,0 +1,39 @@
+# Plantilla que el hook de Kubernetes del runner (ACTIONS_RUNNER_CONTAINER_HOOK_TEMPLATE) fusiona
+# con los pods de trabajo que crea para los jobs con `container:` (kaniko en el job `build`).
+# Sin ella esos pods nacerían con la ServiceAccount `default` del namespace y, por tanto, sin
+# Workload Identity: kaniko no podría publicar en Artifact Registry.
+#
+# El bootstrap la publica como ConfigMap arc-hook-template (clave default.yaml) en arc-runners y
+# runner-set-values.yaml la monta en /home/runner/pod-templates/default.yaml.
+# El contenedor "$job" es el nombre reservado para aplicar ajustes al contenedor del job.
+apiVersion: v1
+kind: PodTemplate
+metadata:
+  labels:
+    app.kubernetes.io/part-of: gke-runners
+    app.kubernetes.io/component: job-pod
+spec:
+  # Misma identidad que el runner: KSA arc-runner → GSA github-runners@PROJECT (Workload Identity).
+  serviceAccountName: arc-runner
+  # Mismo pool Spot que los runners (comparten el PVC de trabajo, que es ReadWriteOnce, así que
+  # en cualquier caso deben programarse en el mismo nodo).
+  nodeSelector:
+    workload: runners
+  tolerations:
+    - key: dedicated
+      operator: Equal
+      value: runners
+      effect: NoSchedule
+  containers:
+    - name: $job
+      # kaniko necesita ~1-2 GiB para instalar dependencias Python y crear capas; los límites
+      # evitan que un build desbocado tumbe el nodo compartido con el runner.
+      resources:
+        requests:
+          cpu: 500m
+          memory: 1Gi
+        limits:
+          cpu: "2"
+          memory: 3Gi
+      securityContext:
+        allowPrivilegeEscalation: false

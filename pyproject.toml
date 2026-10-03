@@ -1,7 +1,7 @@
 [project]
 name = "aws-cloud-portfolio"
 version = "1.0.0"
-description = "Funciones Lambda en Python del portfolio de ingeniería cloud en AWS"
+description = "Código Python del portfolio de ingeniería cloud (Lambda en AWS, API y jobs en GCP)"
 requires-python = ">=3.13"
 
 [tool.ruff]
@@ -14,7 +14,7 @@ select = ["E", "F", "W", "I", "B", "UP", "S", "BLE", "C4", "SIM", "RUF"]
 ignore = ["S101", "RUF001", "RUF002", "RUF003"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["order_processor", "cost_hygiene"]
+known-first-party = ["order_processor", "cost_hygiene", "platform_api", "iam_key_auditor"]
 
 [tool.pytest.ini_options]
 addopts = "-q --strict-markers"

@@ -1,0 +1,392 @@
+name: GCP · Plataforma GKE
+
+# Pipeline de projects/06-gcp-gke-platform: build → scan → deploy dev → deploy prod.
+#
+# Salvo el bootstrap, todos los jobs corren en runners self-hosted efímeros DENTRO del clúster
+# (Actions Runner Controller, `runs-on: gke-runners`), así que GitHub no guarda ni claves de GCP ni
+# credenciales de clúster: kaniko y Trivy se autentican en Artifact Registry por Workload Identity
+# (KSA arc-runner → GSA github-runners) y helm/kubectl usan el token de esa misma KSA, acotado por
+# el RBAC de runners/rbac.yaml al namespace `platform`.
+#
+#   bootstrap-runners  manual · ubuntu-latest · OIDC → Workload Identity Federation. Instala ARC y
+#                      publica el secreto de la GitHub App desde Secret Manager. Único job en
+#                      runners de GitHub: es el que crea los runners propios.
+#   build              kaniko (sin daemon Docker ni privilegios) → Artifact Registry; etiquetas
+#                      <sha> y latest-main para las imágenes api e iam-key-auditor.
+#   scan               Trivy sobre las imágenes publicadas; falla con CRITICAL/HIGH corregibles y
+#                      sube el SARIF a code scanning.
+#   deploy-dev         helm upgrade --install del chart charts/api (environment dev) + humo.
+#   deploy-prod        mismo despliegue con replicaCount=3 en el environment production, que
+#                      exige revisores (ADR-0003), igual que el apply de Terraform.
+#
+# Si el repositorio no tiene la plataforma desplegada (vars.GCP_WIF_PROVIDER vacío) los jobs se
+# omiten en lugar de fallar, como en terraform-deploy.yml. Si la plataforma existe pero aún no se
+# ejecutó bootstrap-runners, los jobs con runs-on: gke-runners quedan en cola.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "projects/06-gcp-gke-platform/**"
+      - "!projects/06-gcp-gke-platform/**.md"
+      - ".github/workflows/gcp-platform.yml"
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Acción a ejecutar"
+        required: true
+        type: choice
+        default: deploy
+        options:
+          - deploy
+          - bootstrap-runners
+          - promote-prod
+
+permissions:
+  contents: read
+
+# Un despliegue a la vez por rama; no se cancela el que está en curso para no dejar una release de
+# Helm a medias.
+concurrency:
+  group: gcp-platform-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  PROJECT_DIR: projects/06-gcp-gke-platform
+  NAMESPACE: platform
+  ARC_VERSION: "0.15.0"
+  HELM_VERSION: v3.16.4
+  REGISTRY: ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/platform
+
+jobs:
+  bootstrap-runners:
+    name: Bootstrap de runners (ARC)
+    if: >-
+      vars.GCP_WIF_PROVIDER != '' &&
+      github.event_name == 'workflow_dispatch' &&
+      inputs.action == 'bootstrap-runners'
+    # Único job en runners de GitHub: instala los runners propios, así que no puede correr en ellos.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write # OIDC → Workload Identity Federation, sin claves de cuenta de servicio
+    defaults:
+      run:
+        working-directory: projects/06-gcp-gke-platform
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOYER_SA }}
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+        with:
+          install_components: gke-gcloud-auth-plugin
+
+      # El clúster es privado: el runner de GitHub llega al plano de control por el endpoint DNS
+      # (autenticación IAM, sin redes autorizadas ni IP pública abierta).
+      - uses: google-github-actions/get-gke-credentials@v2
+        with:
+          cluster_name: ${{ vars.GKE_CLUSTER }}
+          location: ${{ vars.GCP_REGION }}
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          use_dns_based_endpoint: true
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: ${{ env.HELM_VERSION }}
+
+      - name: Namespaces (idempotente)
+        run: |
+          for ns in arc-systems arc-runners "$NAMESPACE"; do
+            kubectl create namespace "$ns" --dry-run=client -o yaml | kubectl apply -f -
+          done
+
+      # Los tres valores de la GitHub App viven en Secret Manager (ver runners/README.md). Se leen
+      # a variables y se pasan a kubectl sin pasar por el log ni por el disco.
+      - name: Secreto de la GitHub App (Secret Manager → Kubernetes)
+        env:
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+        run: |
+          set +x
+          app_id="$(gcloud secrets versions access latest --secret=arc-github-app-id --project="$PROJECT_ID")"
+          installation_id="$(gcloud secrets versions access latest --secret=arc-github-app-installation-id --project="$PROJECT_ID")"
+          private_key="$(gcloud secrets versions access latest --secret=arc-github-app-private-key --project="$PROJECT_ID")"
+          echo "::add-mask::$app_id"
+          echo "::add-mask::$installation_id"
+          kubectl -n arc-runners create secret generic arc-github-app \
+            --from-literal=github_app_id="$app_id" \
+            --from-literal=github_app_installation_id="$installation_id" \
+            --from-literal=github_app_private_key="$private_key" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: KSA y RBAC de los runners
+        env:
+          RUNNERS_SA: ${{ vars.GCP_RUNNERS_SA }}
+        run: |
+          sed "s#github-runners@PROJECT_ID.iam.gserviceaccount.com#${RUNNERS_SA}#g" runners/rbac.yaml \
+            | kubectl apply -f -
+
+      - name: Plantilla de los pods de trabajo (hook de Kubernetes)
+        run: |
+          kubectl -n arc-runners create configmap arc-hook-template \
+            --from-file=default.yaml=runners/arc/hook-template.yaml \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Controlador ARC
+        run: |
+          helm upgrade --install arc \
+            oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set-controller \
+            --version "$ARC_VERSION" -n arc-systems \
+            -f runners/arc/controller-values.yaml \
+            --wait --timeout 5m
+
+      # githubConfigUrl se toma del repositorio actual para que un fork registre sus propios runners
+      # sin editar los values.
+      - name: Runner scale set gke-runners
+        env:
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          helm upgrade --install gke-runners \
+            oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set \
+            --version "$ARC_VERSION" -n arc-runners \
+            -f runners/arc/runner-set-values.yaml \
+            --set githubConfigUrl="$REPO_URL" \
+            --wait --timeout 5m
+
+      - name: Resumen
+        run: |
+          {
+            echo "### Runners self-hosted"
+            echo
+            kubectl -n arc-systems get pods -o wide
+            echo
+            kubectl -n arc-runners get autoscalingrunnersets
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  build:
+    name: Build · ${{ matrix.image }}
+    if: >-
+      vars.GCP_WIF_PROVIDER != '' &&
+      (github.event_name == 'push' || inputs.action == 'deploy' || inputs.action == 'promote-prod')
+    runs-on: gke-runners
+    timeout-minutes: 20
+    # El runner (modo kubernetes) ejecuta este job en un pod aparte con la imagen de kaniko, sin
+    # daemon Docker ni contenedor privilegiado. La imagen "debug" incluye busybox para los pasos
+    # `run` y para que actions/checkout funcione (sin git, descarga el tarball por la API).
+    container:
+      image: gcr.io/kaniko-project/executor:v1.23.2-debug
+    defaults:
+      run:
+        shell: sh # la imagen de kaniko no trae bash
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: api
+            context: src/platform_api
+          - image: iam-key-auditor
+            context: src/iam_key_auditor
+    steps:
+      - uses: actions/checkout@v4
+
+      # Sin claves: el pod de trabajo usa la KSA arc-runner y kaniko obtiene el token de Artifact
+      # Registry del metadata server de GKE (Workload Identity) a través de docker-credential-gcr.
+      # --cache acelera las capas de dependencias; --reproducible fija los timestamps de las capas
+      # para que el mismo commit produzca el mismo digest.
+      - name: Construir y publicar con kaniko
+        env:
+          IMAGE: ${{ matrix.image }}
+          CONTEXT: ${{ env.PROJECT_DIR }}/${{ matrix.context }}
+        run: |
+          /kaniko/executor \
+            --context "dir://${GITHUB_WORKSPACE}/${CONTEXT}" \
+            --dockerfile "${GITHUB_WORKSPACE}/${CONTEXT}/Dockerfile" \
+            --destination "${REGISTRY}/${IMAGE}:${GITHUB_SHA}" \
+            --destination "${REGISTRY}/${IMAGE}:latest-main" \
+            --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
+            --label "org.opencontainers.image.source=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" \
+            --cache=true \
+            --cache-repo "${REGISTRY}/cache" \
+            --snapshot-mode=redo \
+            --reproducible \
+            --digest-file "${RUNNER_TEMP}/digest"
+          {
+            echo "### Imagen \`${IMAGE}\`"
+            echo
+            echo "- \`${REGISTRY}/${IMAGE}:${GITHUB_SHA}\`"
+            echo "- digest: \`$(cat "${RUNNER_TEMP}/digest")\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  scan:
+    name: Trivy · ${{ matrix.image }}
+    needs: build
+    if: vars.GCP_WIF_PROVIDER != ''
+    runs-on: gke-runners
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      security-events: write # publica los hallazgos en la pestaña Security
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [api, iam-key-auditor]
+    steps:
+      - uses: actions/checkout@v4
+
+      # Escanea la imagen ya publicada (la misma que se despliega) por referencia remota. Trivy se
+      # autentica en Artifact Registry con las Application Default Credentials del pod, es decir,
+      # con la GSA de los runners vía Workload Identity: tampoco aquí hay claves.
+      - name: Trivy (CRITICAL/HIGH con corrección disponible)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ matrix.image }}:${{ github.sha }}
+          format: sarif
+          output: trivy-${{ matrix.image }}.sarif
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
+
+      - name: Subir resultados a GitHub code scanning
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-${{ matrix.image }}.sarif
+          category: trivy-${{ matrix.image }}
+
+  deploy-dev:
+    name: Deploy · dev
+    needs: scan
+    if: vars.GCP_WIF_PROVIDER != ''
+    runs-on: gke-runners
+    timeout-minutes: 15
+    environment:
+      name: dev
+      url: ${{ steps.gateway.outputs.url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: ${{ env.HELM_VERSION }}
+
+      - uses: azure/setup-kubectl@v4
+
+      # El runner corre dentro del clúster: kubectl y helm detectan la configuración in-cluster y
+      # usan el token de la KSA arc-runner, limitado por el Role platform-deployer de
+      # runners/rbac.yaml. No hay kubeconfig, ni get-credentials, ni cuenta de servicio con clave.
+      - name: Helm upgrade --install
+        env:
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          API_SA: ${{ vars.GCP_API_SA }}
+          CLOUD_ARMOR_POLICY: ${{ vars.CLOUD_ARMOR_POLICY }}
+        run: |
+          helm upgrade --install platform-api "$PROJECT_DIR/charts/api" \
+            -n "$NAMESPACE" \
+            --set-string image.repository="${REGISTRY}/api" \
+            --set-string image.tag="$GITHUB_SHA" \
+            --set-string env.GIT_SHA="$GITHUB_SHA" \
+            --set-string env.PROJECT_ID="$PROJECT_ID" \
+            --set gcpServiceAccount="$API_SA" \
+            --set cloudArmorPolicy="$CLOUD_ARMOR_POLICY" \
+            --atomic --wait --timeout 5m
+
+      # Secretos del environment de GitHub: la app lee los suyos de Secret Manager con su propia
+      # identidad (Workload Identity), así que el pipeline no transporta ninguno. Si hiciera falta
+      # inyectar uno en el despliegue, la forma segura es exponerlo al paso como variable de
+      # entorno (nunca interpolado en `run`) y pasarlo a Helm por extraEnv:
+      #
+      # - name: Secretos del environment
+      #   env:
+      #     FEATURE_FLAGS_TOKEN: ${{ secrets.FEATURE_FLAGS_TOKEN }}
+      #   run: |
+      #     helm upgrade --install platform-api "$PROJECT_DIR/charts/api" -n "$NAMESPACE" --reuse-values \
+      #       --set-string 'extraEnv[0].name=FEATURE_FLAGS_TOKEN' \
+      #       --set-string "extraEnv[0].value=$FEATURE_FLAGS_TOKEN"
+
+      - name: Esperar al rollout
+        run: kubectl rollout status deployment/platform-api -n "$NAMESPACE" --timeout=120s
+
+      # Prueba de humo desde dentro del namespace. La etiqueta platform-api-client=true es la que
+      # la NetworkPolicy del chart admite como cliente interno.
+      - name: Prueba de humo
+        run: |
+          kubectl run "smoke-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" --rm -i --restart=Never \
+            --image=curlimages/curl:8.10.1 -n "$NAMESPACE" \
+            --labels=platform-api-client=true \
+            -- -fsS http://platform-api/healthz
+
+      - name: Dirección del Gateway
+        id: gateway
+        run: |
+          ip="$(kubectl -n "$NAMESPACE" get gateway platform-api -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || true)"
+          if [ -n "$ip" ]; then
+            echo "url=http://${ip}" >> "$GITHUB_OUTPUT"
+            echo "Gateway: http://${ip} (dev)" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "El Gateway aún no tiene dirección asignada (la primera programación tarda unos minutos)."
+          fi
+
+  deploy-prod:
+    name: Deploy · production
+    needs: deploy-dev
+    if: >-
+      vars.GCP_WIF_PROVIDER != '' &&
+      (github.event_name == 'push' || inputs.action == 'promote-prod')
+    runs-on: gke-runners
+    timeout-minutes: 15
+    # El environment "production" exige revisores en GitHub (ADR-0003): el job queda en espera
+    # hasta la aprobación, igual que el apply de Terraform.
+    environment:
+      name: production
+      url: ${{ steps.gateway.outputs.url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: ${{ env.HELM_VERSION }}
+
+      - uses: azure/setup-kubectl@v4
+
+      - name: Helm upgrade --install (3 réplicas)
+        env:
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          API_SA: ${{ vars.GCP_API_SA }}
+          CLOUD_ARMOR_POLICY: ${{ vars.CLOUD_ARMOR_POLICY }}
+        run: |
+          helm upgrade --install platform-api "$PROJECT_DIR/charts/api" \
+            -n "$NAMESPACE" \
+            --set-string image.repository="${REGISTRY}/api" \
+            --set-string image.tag="$GITHUB_SHA" \
+            --set-string env.GIT_SHA="$GITHUB_SHA" \
+            --set-string env.PROJECT_ID="$PROJECT_ID" \
+            --set gcpServiceAccount="$API_SA" \
+            --set cloudArmorPolicy="$CLOUD_ARMOR_POLICY" \
+            --set replicaCount=3 \
+            --atomic --wait --timeout 5m
+
+      - name: Esperar al rollout
+        run: kubectl rollout status deployment/platform-api -n "$NAMESPACE" --timeout=120s
+
+      - name: Prueba de humo
+        run: |
+          kubectl run "smoke-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" --rm -i --restart=Never \
+            --image=curlimages/curl:8.10.1 -n "$NAMESPACE" \
+            --labels=platform-api-client=true \
+            -- -fsS http://platform-api/healthz
+
+      - name: Dirección del Gateway
+        id: gateway
+        run: |
+          ip="$(kubectl -n "$NAMESPACE" get gateway platform-api -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || true)"
+          if [ -n "$ip" ]; then
+            echo "url=http://${ip}" >> "$GITHUB_OUTPUT"
+            echo "Gateway: http://${ip} (production)" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "El Gateway aún no tiene dirección asignada (la primera programación tarda unos minutos)."
+          fi

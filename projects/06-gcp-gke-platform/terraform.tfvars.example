@@ -1,0 +1,39 @@
+# Copia a terraform.tfvars (ignorado por git) y ajusta.
+
+project_id  = "mi-proyecto-gcp"
+region      = "southamerica-east1"
+environment = "dev"
+
+github_owner = "jromeroa94"
+github_repo  = "aws-cloud-portfolio"
+
+# Acceso al endpoint público del plano de control desde la oficina o la VPN.
+# Déjalo vacío para usar solo el endpoint DNS autenticado con IAM.
+authorized_networks = [
+  # { cidr_block = "203.0.113.10/32", display_name = "oficina" },
+]
+
+# Pools
+apps_machine_type    = "e2-standard-2"
+apps_min_nodes       = 2
+apps_max_nodes       = 6
+runners_machine_type = "e2-standard-4"
+runners_max_nodes    = 4
+
+# Observabilidad y coste
+alert_email          = "guardia@example.com"
+availability_slo     = 0.999
+latency_threshold_ms = 500
+billing_account_id   = "" # "012345-6789AB-CDEF01" para crear el presupuesto
+budget_amount_usd    = 150
+
+# Auditor de claves IAM (solo informa; enforce=true desactiva claves vencidas)
+key_auditor_schedule     = "0 7 * * *"
+key_auditor_max_age_days = 90
+key_auditor_grace_days   = 14
+key_auditor_enforce      = false
+
+# Seguridad
+enable_binary_authorization = false
+enforce_no_sa_keys          = false
+deletion_protection         = false

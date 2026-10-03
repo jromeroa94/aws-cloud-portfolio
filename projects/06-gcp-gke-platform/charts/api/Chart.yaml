@@ -1,0 +1,20 @@
+apiVersion: v2
+name: platform-api
+description: >-
+  API de la plataforma GKE privada: Deployment endurecido con Workload Identity,
+  autoescalado, PDB, NetworkPolicy, exposición por Gateway API de GKE
+  (balanceador global + Cloud Armor) y scraping con Managed Service for Prometheus.
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+kubeVersion: ">=1.29.0-0"
+keywords:
+  - gke
+  - gateway-api
+  - workload-identity
+home: https://github.com/jromeroa94/aws-cloud-portfolio/tree/main/projects/06-gcp-gke-platform
+sources:
+  - https://github.com/jromeroa94/aws-cloud-portfolio
+maintainers:
+  - name: Johan Romero Aguirre
+    url: https://github.com/jromeroa94

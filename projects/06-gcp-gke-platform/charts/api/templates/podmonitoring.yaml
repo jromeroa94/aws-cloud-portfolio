@@ -1,0 +1,19 @@
+{{- if .Values.monitoring.enabled }}
+# Managed Service for Prometheus: los colectores de gmp-system raspan /metrics de cada pod y lo
+# envían a Cloud Monitoring sin desplegar ni operar un Prometheus propio.
+apiVersion: monitoring.googleapis.com/v1
+kind: PodMonitoring
+metadata:
+  name: {{ include "platform-api.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "platform-api.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "platform-api.selectorLabels" . | nindent 6 }}
+  endpoints:
+    - port: http
+      path: {{ .Values.monitoring.path }}
+      interval: {{ .Values.monitoring.interval }}
+{{- end }}

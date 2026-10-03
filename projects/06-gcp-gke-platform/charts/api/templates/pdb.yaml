@@ -1,0 +1,16 @@
+{{- if .Values.podDisruptionBudget.enabled }}
+# Limita las interrupciones voluntarias (drenado de nodos por upgrades automáticos de GKE,
+# cluster autoscaler) a un pod a la vez, así siempre queda capacidad sirviendo.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "platform-api.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "platform-api.labels" . | nindent 4 }}
+spec:
+  maxUnavailable: {{ .Values.podDisruptionBudget.maxUnavailable }}
+  selector:
+    matchLabels:
+      {{- include "platform-api.selectorLabels" . | nindent 6 }}
+{{- end }}

@@ -1,0 +1,11 @@
+# Archivos que no se empaquetan en el chart.
+.DS_Store
+.git/
+.gitignore
+*.swp
+*.bak
+*.tmp
+*.orig
+*~
+.vscode/
+.idea/

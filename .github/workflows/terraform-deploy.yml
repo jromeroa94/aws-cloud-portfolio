@@ -51,10 +51,11 @@ jobs:
         run: |
           changed=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
           # Un cambio en modules/ afecta a todos los proyectos que lo consumen.
+          # El proyecto 06 (GCP) tiene su propio workflow con Workload Identity Federation.
           if echo "$changed" | grep -q '^modules/'; then
-            projects=$(ls projects)
+            projects=$(ls projects | grep -v '^06-')
           else
-            projects=$(echo "$changed" | grep '^projects/' | cut -d/ -f2 | sort -u)
+            projects=$(echo "$changed" | grep '^projects/' | cut -d/ -f2 | sort -u | grep -v '^06-' || true)
           fi
           json=$(printf '%s\n' $projects | jq -R . | jq -cs 'map(select(length > 0))')
           echo "projects=$json" >> "$GITHUB_OUTPUT"

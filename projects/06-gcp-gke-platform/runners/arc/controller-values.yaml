@@ -1,0 +1,53 @@
+# Valores del chart gha-runner-scale-set-controller (Actions Runner Controller, ARC) 0.15.0.
+# Se instala en el namespace arc-systems. El controlador solo reconcilia CRDs y crea un pod
+# "listener" por runner scale set; los runners viven en arc-runners (runner-set-values.yaml).
+#
+#   helm upgrade --install arc \
+#     oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set-controller \
+#     --version 0.15.0 -n arc-systems -f controller-values.yaml --wait
+
+# Una réplica basta: el controlador usa leader election y su caída solo retrasa el autoescalado,
+# no interrumpe los jobs en curso.
+replicaCount: 1
+
+# Carga ligera (reconcilia unos pocos objetos); los límites evitan que un bucle de reconciliación
+# descontrolado compita con las cargas de la plataforma.
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+# Logs en JSON para que Cloud Logging los indexe por campo; nivel info (debug es el valor por
+# defecto del chart y resulta demasiado ruidoso en un clúster compartido).
+flags:
+  logLevel: info
+  logFormat: json
+
+# Métricas Prometheus del controlador y de los listeners (gha_* : jobs asignados, runners
+# ocupados/inactivos, duración de arranque...). Las recoge Managed Service for Prometheus con
+# un PodMonitoring sobre arc-systems si se desea observabilidad del CI.
+metrics:
+  controllerManagerAddr: ":8080"
+  listenerAddr: ":8080"
+  listenerEndpoint: "/metrics"
+
+# Imagen distroless que ya corre como usuario no root (65532); se endurece el resto.
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+# Sin nodeSelector ni tolerations: el controlador y los listeners deben vivir en el node pool
+# estable (bajo demanda), no en el pool Spot de runners, para no perder el autoescalado en una
+# preempción.
+nodeSelector: {}
+tolerations: []

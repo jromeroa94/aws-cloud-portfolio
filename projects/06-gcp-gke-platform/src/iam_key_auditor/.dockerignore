@@ -1,0 +1,9 @@
+# Solo entran en la imagen el código del paquete y requirements.txt.
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.venv/
+*.md
+Dockerfile
+.dockerignore

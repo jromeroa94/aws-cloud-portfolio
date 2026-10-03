@@ -9,6 +9,12 @@ plugin "aws" {
   source  = "github.com/terraform-linters/tflint-ruleset-aws"
 }
 
+plugin "google" {
+  enabled = true
+  version = "0.39.0"
+  source  = "github.com/terraform-linters/tflint-ruleset-google"
+}
+
 rule "terraform_naming_convention" {
   enabled = true
 }
