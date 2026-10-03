@@ -149,7 +149,7 @@
   .readout dd { margin: 0; font-size: 1.25rem; font-weight: 800; letter-spacing: -0.02em; white-space: nowrap; font-feature-settings: "tnum" 1; }
 
   .steps { list-style: none; margin: 0; padding: 0; font-size: 0.9375rem; }
-  .steps li { display: grid; grid-template-columns: 4.5em 1fr; gap: 8px; color: var(--muted); padding: 2px 0; }
+  .steps li { display: grid; grid-template-columns: 6.75em 1fr; gap: 8px; color: var(--muted); padding: 2px 0; }
   .steps li.done { color: var(--ink); }
   .steps time { font-weight: 700; }
   .nowrap { white-space: nowrap; }
@@ -289,7 +289,7 @@
           <div><dt>Interrupción</dt><dd id="ro-rto">—</dd></div>
         </dl>
         <ol class="steps" id="steps" aria-live="polite"></ol>
-        <p class="sim-note">Simulación ilustrativa de los pasos del <a class="repo-link" href="#" data-path="/blob/main/projects/01-multi-region-ha-dr/runbooks/failover.md">runbook de failover</a>. Los tiempos son objetivos de diseño (RPO menor a 1 minuto, RTO menor a 15), no una medición.</p>
+        <p class="sim-note">Simulación ilustrativa de los pasos del <a class="repo-link" href="#" data-path="/blob/main/projects/01-multi-region-ha-dr/runbooks/failover.md">runbook de failover</a>. Los tiempos son objetivos de diseño (RPO menor a 1 minuto, RTO menor a 15 minutos), no una medición.</p>
       </figure>
     </div>
 
@@ -485,17 +485,17 @@
     var timers = [];
 
     var failover = [
-      { t: "00:00", text: "sa-east-1 deja de responder", act: function () { setRegion("primary", "down"); } },
-      { t: "00:30", text: "Route 53 marca el health check como fallido y envía el tráfico a us-east-1", act: function () { setLinks("dr"); } },
-      { t: "02:00", text: "El ASG de us-east-1 escala de 1 a 2 instancias", act: function () { $("state-dr").textContent = "Escalando a 2 instancias"; } },
-      { t: "04:00", text: "Aurora promueve el cluster de us-east-1 a writer", act: function () { setRepl(false); $("ro-rpo").textContent = "< 1 s"; } },
-      { t: "06:00", text: "us-east-1 acepta escrituras. Servicio recuperado", act: function () { setRegion("dr", "active"); $("ro-region").textContent = "us-east-1"; $("ro-rto").textContent = "6 min"; } },
+      { t: "0 s", text: "sa-east-1 deja de responder", act: function () { setRegion("primary", "down"); } },
+      { t: "+30 s", text: "Route 53 marca el health check como fallido y envía el tráfico a us-east-1", act: function () { setLinks("dr"); } },
+      { t: "+2 min", text: "El ASG de us-east-1 escala de 1 a 2 instancias", act: function () { $("state-dr").textContent = "Escalando a 2 instancias"; } },
+      { t: "+4 min", text: "Aurora promueve el cluster de us-east-1 a writer", act: function () { setRepl(false); $("ro-rpo").textContent = "< 1 s"; } },
+      { t: "+6 min", text: "us-east-1 acepta escrituras. Servicio recuperado", act: function () { setRegion("dr", "active"); $("ro-region").textContent = "us-east-1"; $("ro-rto").textContent = "6 min"; } },
     ];
 
     var failback = [
-      { t: "00:00", text: "sa-east-1 se recupera y vuelve como réplica de us-east-1", act: function () { setRegion("primary", "standby"); setRepl(true, "up"); } },
-      { t: "05:00", text: "Switchover planificado de Aurora, sin pérdida de datos", act: function () { setRegion("primary", "active"); setRegion("dr", "standby"); setRepl(true, "down"); } },
-      { t: "05:30", text: "Route 53 vuelve a enviar el tráfico a sa-east-1", act: function () { setLinks("primary"); $("ro-region").textContent = "sa-east-1"; $("ro-rpo").textContent = "0"; $("ro-rto").textContent = "0 min"; } },
+      { t: "0 s", text: "sa-east-1 se recupera y vuelve como réplica de us-east-1", act: function () { setRegion("primary", "standby"); setRepl(true, "up"); } },
+      { t: "+5 min", text: "Switchover planificado de Aurora, sin pérdida de datos", act: function () { setRegion("primary", "active"); setRegion("dr", "standby"); setRepl(true, "down"); } },
+      { t: "+5 min 30 s", text: "Route 53 vuelve a enviar el tráfico a sa-east-1", act: function () { setLinks("primary"); $("ro-region").textContent = "sa-east-1"; $("ro-rpo").textContent = "0"; $("ro-rto").textContent = "0 min"; } },
     ];
 
     var styles = {
