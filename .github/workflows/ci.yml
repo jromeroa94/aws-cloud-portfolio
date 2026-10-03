@@ -56,6 +56,10 @@ jobs:
         run: terraform validate
 
       - name: TFLint
+        env:
+          # Los plugins se descargan de GitHub Releases; con token no se agota el
+          # límite anónimo de la API cuando la matriz corre en paralelo.
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           tflint --init --config "$GITHUB_WORKSPACE/.tflint.hcl"
           tflint --config "$GITHUB_WORKSPACE/.tflint.hcl" --format compact
@@ -141,19 +145,24 @@ jobs:
         run: helm lint charts/api --strict
 
       - name: Render (valores por defecto y producción)
+        # Se renderiza dentro del workspace: el contenedor de kubeconform solo monta ese directorio.
         run: |
+          mkdir -p rendered
           helm template platform-api charts/api \
-            --set gcpServiceAccount=platform-api@demo.iam.gserviceaccount.com > /tmp/default.yaml
+            --set gcpServiceAccount=platform-api@demo.iam.gserviceaccount.com > rendered/default.yaml
           helm template platform-api charts/api \
             --set gcpServiceAccount=platform-api@demo.iam.gserviceaccount.com \
             --set replicaCount=3 --set-string image.tag=0123456 \
-            --set gateway.tls.certmap=platform-certs > /tmp/prod.yaml
-          echo "Documentos renderizados: $(grep -c '^kind:' /tmp/default.yaml) / $(grep -c '^kind:' /tmp/prod.yaml)"
+            --set gateway.tls.certmap=platform-certs > rendered/prod.yaml
+          echo "Documentos renderizados: $(grep -c '^kind:' rendered/default.yaml) / $(grep -c '^kind:' rendered/prod.yaml)"
 
       - name: Validar los manifiestos contra los esquemas de Kubernetes
         uses: docker://ghcr.io/yannh/kubeconform:v0.6.7
         with:
+          # Los CRDs de GKE (Gateway, HealthCheckPolicy, PodMonitoring...) no tienen
+          # esquema público: se omiten; el resto se valida de forma estricta.
           args: >-
             -strict -summary -ignore-missing-schemas
             -kubernetes-version 1.31.0
-            /tmp/default.yaml /tmp/prod.yaml
+            projects/06-gcp-gke-platform/rendered/default.yaml
+            projects/06-gcp-gke-platform/rendered/prod.yaml

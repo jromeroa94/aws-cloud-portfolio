@@ -36,3 +36,6 @@ htmlcov/
 
 # Los módulos reutilizables no fijan versiones de proveedor: lo hacen las raíces.
 modules/**/.terraform.lock.hcl
+
+# Manifiestos renderizados por la CI del chart de Helm
+projects/*/rendered/
